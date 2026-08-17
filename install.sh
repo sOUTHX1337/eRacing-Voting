@@ -1,19 +1,22 @@
 #!/usr/bin/env bash
 # Einmaliges Setup auf einem frischen Debian-Server.
+# TLS wird hier NICHT terminiert - das uebernimmt ein externer Reverse Proxy,
+# der plain HTTP an diesen Server auf ${PORT} weiterleitet.
 # Danach: sudo ./install.sh erneut ausfuehren = sicher (idempotent),
 # fuer reine Updates aber lieber ./update.sh nutzen.
 #
 # Nutzung:
-#   sudo ./install.sh                       # ohne HTTPS/Domain
-#   sudo ./install.sh voting.la-eracing.de  # mit nginx + Let's-Encrypt-Zertifikat
+#   sudo ./install.sh                       # Domain nur informativ
+#   sudo ./install.sh voting.la-eracing.de
 
 set -euo pipefail
 
-REPO_URL="https://github.com/sOUTHX1337/eRacing-Voting.git"
+REPO_URL="git@github.com:sOUTHX1337/eRacing-Voting.git"
 APP_USER="voting"
 APP_DIR="/home/${APP_USER}/app"
 SERVICE_NAME="voting"
 PORT="8420"
+BIND_HOST="0.0.0.0"
 DOMAIN="${1:-}"
 
 if [[ $EUID -ne 0 ]]; then
@@ -23,18 +26,41 @@ fi
 
 echo "==> Systempakete installieren"
 apt-get update -qq
-apt-get install -y python3 python3-venv python3-pip git nginx openssl >/dev/null
+apt-get install -y python3 python3-venv python3-pip git openssl >/dev/null
 
 echo "==> Nutzer '${APP_USER}' anlegen (falls noetig)"
 if ! id "${APP_USER}" &>/dev/null; then
   useradd --system --create-home --shell /usr/sbin/nologin "${APP_USER}"
 fi
 
+echo "==> SSH-Deploy-Key fuer '${APP_USER}' pruefen"
+SSH_DIR="/home/${APP_USER}/.ssh"
+KEY_FILE="${SSH_DIR}/id_ed25519"
+sudo -u "${APP_USER}" mkdir -p "${SSH_DIR}"
+chmod 700 "${SSH_DIR}"
+if [[ ! -f "${KEY_FILE}" ]]; then
+  sudo -u "${APP_USER}" ssh-keygen -t ed25519 -C "${APP_USER}@$(hostname)" -f "${KEY_FILE}" -N ""
+fi
+if ! grep -q "github.com" "${SSH_DIR}/known_hosts" 2>/dev/null; then
+  sudo -u "${APP_USER}" ssh-keyscan -t ed25519 github.com >> "${SSH_DIR}/known_hosts" 2>/dev/null
+fi
+
 echo "==> Code holen/aktualisieren"
 if [[ -d "${APP_DIR}/.git" ]]; then
   sudo -u "${APP_USER}" git -C "${APP_DIR}" pull --ff-only
+elif sudo -u "${APP_USER}" git clone "${REPO_URL}" "${APP_DIR}" 2>/tmp/clone-error.log; then
+  :
 else
-  sudo -u "${APP_USER}" git clone "${REPO_URL}" "${APP_DIR}"
+  echo ""
+  echo "!! Klonen fehlgeschlagen - vermutlich fehlt der Deploy Key noch in GitHub."
+  echo "!! Oeffentlichen Schluessel unten bei GitHub eintragen:"
+  echo "!!   Repo -> Settings -> Deploy keys -> Add deploy key"
+  echo "!!   (Write access NICHT aktivieren - Lesezugriff reicht)"
+  echo ""
+  cat "${KEY_FILE}.pub"
+  echo ""
+  echo "Danach dieses Skript einfach erneut ausfuehren: sudo ./install.sh ${DOMAIN}"
+  exit 1
 fi
 
 echo "==> Python-Umgebung"
@@ -64,7 +90,7 @@ After=network.target
 User=${APP_USER}
 Group=${APP_USER}
 WorkingDirectory=${APP_DIR}
-ExecStart=${APP_DIR}/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port ${PORT}
+ExecStart=${APP_DIR}/.venv/bin/uvicorn app.main:app --host ${BIND_HOST} --port ${PORT}
 Restart=on-failure
 
 [Install]
@@ -78,39 +104,11 @@ systemctl restart "${SERVICE_NAME}"
 echo "==> Dienststatus:"
 systemctl --no-pager --lines=5 status "${SERVICE_NAME}" || true
 
+echo ""
+echo "==> Fertig. App horcht auf ${BIND_HOST}:${PORT}."
 if [[ -n "${DOMAIN}" ]]; then
-  if [[ ! -f "/etc/nginx/sites-available/${SERVICE_NAME}" ]]; then
-    echo "==> nginx-Reverse-Proxy fuer ${DOMAIN} einrichten"
-    cat > "/etc/nginx/sites-available/${SERVICE_NAME}" <<EOF
-server {
-    listen 80;
-    server_name ${DOMAIN};
-
-    location / {
-        proxy_pass http://127.0.0.1:${PORT};
-        proxy_set_header Host \$host;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-}
-EOF
-    ln -sf "/etc/nginx/sites-available/${SERVICE_NAME}" "/etc/nginx/sites-enabled/${SERVICE_NAME}"
-    nginx -t && systemctl reload nginx
-  else
-    echo "==> nginx-Konfiguration existiert bereits, wird nicht veraendert"
-  fi
-
-  if [[ ! -d "/etc/letsencrypt/live/${DOMAIN}" ]]; then
-    echo "==> Let's-Encrypt-Zertifikat holen (Domain muss bereits per DNS auf diesen Server zeigen!)"
-    apt-get install -y certbot python3-certbot-nginx >/dev/null
-    certbot --nginx -d "${DOMAIN}" --non-interactive --agree-tos -m "admin@${DOMAIN}" || \
-      echo "    Certbot fehlgeschlagen - DNS pruefen und danach manuell: certbot --nginx -d ${DOMAIN}"
-  else
-    echo "==> Zertifikat fuer ${DOMAIN} existiert bereits"
-  fi
-else
-  echo "==> Kein Domain-Argument uebergeben - HTTPS/nginx-Setup uebersprungen."
-  echo "    Spaeter nachholen mit: sudo ./install.sh eure-domain.de"
+  echo "    Externen Reverse Proxy fuer ${DOMAIN} auf $(hostname -I | awk '{print $1}'):${PORT} zeigen lassen (plain HTTP)."
 fi
-
-echo "==> Fertig. Log ansehen mit: journalctl -u ${SERVICE_NAME} -f"
+echo "    Firewall nicht vergessen: Port ${PORT} nur fuer die IP des Reverse Proxys freigeben, z. B.:"
+echo "      ufw allow from <reverse-proxy-ip> to any port ${PORT} proto tcp"
+echo "    Log ansehen mit: journalctl -u ${SERVICE_NAME} -f"

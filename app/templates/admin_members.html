@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Mitgliederverwaltung{% endblock %}
+{% block header_meta %}Mitgliederverwaltung{% endblock %}
+{% block content %}
+<div class="content">
+  <div class="panel">
+    <div class="panel-head"><h3>Mitglieder</h3></div>
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Name</th><th>E-Mail</th><th>Status</th><th>Wahlleitung</th><th></th></tr></thead>
+      <tbody>
+        {% for m in members %}
+        <tr>
+          <td class="row-title">{{ m.name }}{% if m.id == member.id %} <span class="row-sub">(du)</span>{% endif %}</td>
+          <td class="row-sub">{{ m.email or '—' }}</td>
+          <td>{{ m.status.value }}</td>
+          <td>
+            {% if m.is_wahlleitung %}<span class="status-pill neutral">Ja</span>
+            {% else %}<span class="status-pill outline">Nein</span>{% endif %}
+          </td>
+          <td>
+            {% if m.id != member.id %}
+            <form class="inline" method="post" action="/admin/mitglieder/{{ m.id }}/toggle-wahlleitung">
+              <button class="btn-sm{% if not m.is_wahlleitung %} red{% endif %}">
+                {{ 'Entziehen' if m.is_wahlleitung else 'Ernennen' }}
+              </button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="row-sub">Noch keine Mitglieder (erst nach dem ersten Login sichtbar).</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+  <p class="form-hint" style="max-width:64ch;">
+    Mitglieder der LDAP-Gruppe <code>LDAP_WAHLLEITUNG_GROUP_DN</code> werden beim Login automatisch zu Wahlleitung
+    ernannt, aber nie automatisch entzogen. Entziehen sowie zusätzliche Ernennungen außerhalb der LDAP-Gruppe
+    laufen ausschließlich hier.
+  </p>
+</div>
+{% endblock %}

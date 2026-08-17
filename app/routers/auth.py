@@ -48,7 +48,10 @@ def login_submit(
         member.name = ldap_user.name
         member.email = ldap_user.email
         member.status = status
-        member.is_wahlleitung = ldap_user.is_wahlleitung
+        # LDAP kann Wahlleitung-Rechte vergeben, aber nie automatisch entziehen -
+        # Entzug (oder zusaetzliche Ernennung ausserhalb der LDAP-Gruppe) laeuft
+        # ueber /admin/mitglieder, damit das dort nicht bei jedem Login ueberschrieben wird.
+        member.is_wahlleitung = member.is_wahlleitung or ldap_user.is_wahlleitung
     db.commit()
 
     request.session["member_id"] = member.id

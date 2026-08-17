@@ -109,3 +109,22 @@ def close_ballot(
         ballot.closed_at = datetime.utcnow()
         db.commit()
     return RedirectResponse(f"/versammlungen/{ballot.assembly_id}", status_code=303)
+
+
+@router.post("/wahlgaenge/{ballot_id}/delete")
+def delete_ballot(
+    ballot_id: int, member: Optional[Member] = Depends(get_current_member), db: Session = Depends(get_db)
+):
+    guard = require_wahlleitung(member)
+    if guard:
+        return guard
+    ballot = db.get(Ballot, ballot_id)
+    if ballot is None:
+        return RedirectResponse("/", status_code=303)
+    assembly_id = ballot.assembly_id
+    # Offene Wahlgaenge nicht loeschbar - erst schliessen, dann aufraeumen.
+    # Cascade (Candidate/Participation/Vote) ist in models.py hinterlegt.
+    if ballot.status != BallotStatus.offen:
+        db.delete(ballot)
+        db.commit()
+    return RedirectResponse(f"/versammlungen/{assembly_id}", status_code=303)

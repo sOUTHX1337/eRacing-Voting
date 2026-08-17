@@ -88,6 +88,12 @@
             {% elif member.is_wahlleitung %}
               <form class="inline" method="post" action="/wahlgaenge/{{ b.id }}/open"><button class="btn-sm">Öffnen</button></form>
             {% endif %}
+            {% if member.is_wahlleitung and b.status.value != 'offen' %}
+              <form class="inline" method="post" action="/wahlgaenge/{{ b.id }}/delete"
+                onsubmit="return confirm('Wahlgang „{{ b.title }}“ endgültig löschen? Das kann nicht rückgängig gemacht werden.');">
+                <button class="btn-sm red" title="Löschen">Löschen</button>
+              </form>
+            {% endif %}
           </td>
         </tr>
         {% else %}
