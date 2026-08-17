@@ -1,9 +1,8 @@
 from dataclasses import dataclass
-from typing import Optional
+from typing import Dict, Optional
 
 from ldap3 import ALL, Connection, Server
 
-from . import config
 from .dev_users import DEV_USERS
 
 
@@ -16,9 +15,11 @@ class LdapUser:
     is_wahlleitung: bool = False
 
 
-def authenticate(username: str, password: str) -> Optional[LdapUser]:
+def authenticate(username: str, password: str, settings: Dict) -> Optional[LdapUser]:
     """Bindet gegen LDAP und prueft Mitgliedschaft in der Gruppe der aktiven Mitglieder.
 
+    `settings` kommt aus app/settings.get_ldap_settings() - eine Mischung aus
+    .env-Startwerten und ggf. per /admin/einstellungen ueberschriebenen Werten.
     Ohne echten LDAP-Server (LDAP_ENABLED=false) werden lokale Test-Accounts aus
     app/dev_users.py verwendet, damit sich das Tool ohne Vereins-Infrastruktur
     ausprobieren laesst.
@@ -26,10 +27,10 @@ def authenticate(username: str, password: str) -> Optional[LdapUser]:
     if not username or not password:
         return None
 
-    if not config.LDAP_ENABLED:
+    if not settings["LDAP_ENABLED"]:
         return _authenticate_dev(username, password)
 
-    return _authenticate_ldap(username, password)
+    return _authenticate_ldap(username, password, settings)
 
 
 def _authenticate_dev(username: str, password: str) -> Optional[LdapUser]:
@@ -45,30 +46,34 @@ def _authenticate_dev(username: str, password: str) -> Optional[LdapUser]:
     )
 
 
-def _authenticate_ldap(username: str, password: str) -> Optional[LdapUser]:
-    bind_dn = config.LDAP_BIND_DN_TEMPLATE.format(username=username)
-    server = Server(config.LDAP_SERVER, get_info=ALL)
+def _authenticate_ldap(username: str, password: str, settings: Dict) -> Optional[LdapUser]:
+    bind_dn = settings["LDAP_BIND_DN_TEMPLATE"].format(username=username)
+    server = Server(settings["LDAP_SERVER"], get_info=ALL)
     try:
         conn = Connection(server, user=bind_dn, password=password, auto_bind=True)
     except Exception:
         return None
 
     try:
+        attr_uid = settings["LDAP_ATTR_UID"]
+        attr_name = settings["LDAP_ATTR_NAME"]
+        attr_email = settings["LDAP_ATTR_EMAIL"]
         conn.search(
-            search_base=config.LDAP_BASE_DN,
-            search_filter=f"({config.LDAP_ATTR_UID}={username})",
-            attributes=[config.LDAP_ATTR_NAME, config.LDAP_ATTR_EMAIL, "memberOf"],
+            search_base=settings["LDAP_BASE_DN"],
+            search_filter=f"({attr_uid}={username})",
+            attributes=[attr_name, attr_email, "memberOf"],
         )
         if not conn.entries:
             return None
         entry = conn.entries[0]
 
-        name = str(getattr(entry, config.LDAP_ATTR_NAME, username))
-        email = str(getattr(entry, config.LDAP_ATTR_EMAIL, "")) or None
+        name = str(getattr(entry, attr_name, username))
+        email = str(getattr(entry, attr_email, "")) or None
 
         member_of = [str(v) for v in getattr(entry, "memberOf", [])]
-        is_active_member = config.LDAP_ACTIVE_GROUP_DN in member_of
-        is_wahlleitung = bool(config.LDAP_WAHLLEITUNG_GROUP_DN) and config.LDAP_WAHLLEITUNG_GROUP_DN in member_of
+        is_active_member = settings["LDAP_ACTIVE_GROUP_DN"] in member_of
+        wahlleitung_dn = settings["LDAP_WAHLLEITUNG_GROUP_DN"]
+        is_wahlleitung = bool(wahlleitung_dn) and wahlleitung_dn in member_of
     finally:
         conn.unbind()
 

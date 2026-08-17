@@ -3,7 +3,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
-from .. import config, ldap_client
+from .. import ldap_client, settings as settings_service
 from ..db import get_db
 from ..models import Member, MemberStatus
 
@@ -12,9 +12,10 @@ templates = Jinja2Templates(directory="app/templates")
 
 
 @router.get("/login")
-def login_form(request: Request):
+def login_form(request: Request, db: Session = Depends(get_db)):
+    ldap_settings = settings_service.get_ldap_settings(db)
     return templates.TemplateResponse(
-        "login.html", {"request": request, "error": None, "dev_mode": not config.LDAP_ENABLED}
+        "login.html", {"request": request, "error": None, "dev_mode": not ldap_settings["LDAP_ENABLED"]}
     )
 
 
@@ -25,11 +26,16 @@ def login_submit(
     password: str = Form(...),
     db: Session = Depends(get_db),
 ):
-    ldap_user = ldap_client.authenticate(username, password)
+    ldap_settings = settings_service.get_ldap_settings(db)
+    ldap_user = ldap_client.authenticate(username, password, ldap_settings)
     if not ldap_user:
         return templates.TemplateResponse(
             "login.html",
-            {"request": request, "error": "Benutzername oder Passwort falsch.", "dev_mode": not config.LDAP_ENABLED},
+            {
+                "request": request,
+                "error": "Benutzername oder Passwort falsch.",
+                "dev_mode": not ldap_settings["LDAP_ENABLED"],
+            },
             status_code=401,
         )
 

@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Einstellungen{% endblock %}
+{% block header_meta %}Einstellungen &middot; LDAP{% endblock %}
+{% block content %}
+<div class="content-narrow">
+
+  {% if saved %}<div class="callout ok flash">Gespeichert. Gilt ab dem nächsten Login.</div>{% endif %}
+
+  <form method="post" action="/admin/einstellungen">
+    <div class="form-group">
+      <label>LDAP aktiv</label>
+      <select name="ldap_enabled">
+        <option value="true" {% if s.LDAP_ENABLED %}selected{% endif %}>Ja &ndash; echten LDAP-Server nutzen</option>
+        <option value="false" {% if not s.LDAP_ENABLED %}selected{% endif %}>Nein &ndash; lokale Test-Accounts (Dev-Modus)</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>LDAP-Server</label>
+      <input type="text" name="ldap_server" value="{{ s.LDAP_SERVER }}" placeholder="ldaps://ldap.la-eracing.de">
+    </div>
+    <div class="form-group">
+      <label>Base DN</label>
+      <input type="text" name="ldap_base_dn" value="{{ s.LDAP_BASE_DN }}" placeholder="dc=la-eracing,dc=de">
+    </div>
+    <div class="form-group">
+      <label>Bind-DN-Vorlage</label>
+      <input type="text" name="ldap_bind_dn_template" value="{{ s.LDAP_BIND_DN_TEMPLATE }}" placeholder="uid={username},ou=people,dc=la-eracing,dc=de">
+      <div class="form-hint">{username} wird durch den eingegebenen Benutzernamen ersetzt.</div>
+    </div>
+    <div class="form-group">
+      <label>Gruppe aktive Mitglieder (DN)</label>
+      <input type="text" name="ldap_active_group_dn" value="{{ s.LDAP_ACTIVE_GROUP_DN }}" placeholder="cn=aktive-mitglieder,ou=groups,dc=la-eracing,dc=de">
+      <div class="form-hint">Nur Mitglieder dieser Gruppe sind stimmberechtigt (Satzung §5, §12 Abs. 1).</div>
+    </div>
+    <div class="form-group">
+      <label>Gruppe Wahlleitung (DN, optional)</label>
+      <input type="text" name="ldap_wahlleitung_group_dn" value="{{ s.LDAP_WAHLLEITUNG_GROUP_DN }}" placeholder="cn=wahlleitung,ou=groups,dc=la-eracing,dc=de">
+      <div class="form-hint">Mitglieder dieser Gruppe werden beim Login automatisch zu Wahlleitung ernannt (nie automatisch entzogen). Leer lassen, um Wahlleitung ausschließlich über <a href="/admin/mitglieder">Mitgliederverwaltung</a> zu vergeben.</div>
+    </div>
+    <div class="form-group">
+      <label>LDAP-Attribut &ndash; Name</label>
+      <input type="text" name="ldap_attr_name" value="{{ s.LDAP_ATTR_NAME }}">
+    </div>
+    <div class="form-group">
+      <label>LDAP-Attribut &ndash; E-Mail</label>
+      <input type="text" name="ldap_attr_email" value="{{ s.LDAP_ATTR_EMAIL }}">
+    </div>
+    <div class="form-group">
+      <label>LDAP-Attribut &ndash; Benutzername</label>
+      <input type="text" name="ldap_attr_uid" value="{{ s.LDAP_ATTR_UID }}">
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary">Speichern</button>
+    </div>
+  </form>
+
+  <p class="form-hint" style="max-width:64ch; margin-top:20px;">
+    Diese Werte starten aus der <code>.env</code>-Datei, werden aber nach dem ersten Speichern hier in der
+    Datenbank geführt und übersteht Neustarts/Updates &ndash; <code>.env</code> wird dann nicht mehr gelesen.
+  </p>
+</div>
+{% endblock %}

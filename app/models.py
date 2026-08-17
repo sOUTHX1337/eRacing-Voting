@@ -17,6 +17,20 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .db import Base
 
 
+class Setting(Base):
+    """Konfiguration, die zur Laufzeit ueber /admin/einstellungen aenderbar ist.
+
+    .env liefert nur die Startwerte (siehe app/settings.py) - sobald ein Key
+    hier existiert, hat er Vorrang und ueberlebt Neustarts/Deploys.
+    """
+
+    __tablename__ = "settings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    value: Mapped[str] = mapped_column(Text)
+
+
 class MemberStatus(str, enum.Enum):
     aktiv = "aktiv"
     passiv = "passiv"
