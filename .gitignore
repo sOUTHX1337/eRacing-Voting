@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+*.pyc
+voting.db
+.env
+.claude/
