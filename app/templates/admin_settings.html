@@ -6,6 +6,23 @@
 
   {% if saved %}<div class="callout ok flash">Gespeichert. Gilt ab dem nächsten Login.</div>{% endif %}
 
+  {% if test_result is defined and test_result %}
+  <div class="callout {{ 'ok' if test_result.ok else '' }} flash">
+    <span class="callout-label" style="display:block; font-family:'Antonio'; font-weight:700; font-size:11px; letter-spacing:.06em; text-transform:uppercase; margin-bottom:4px; color:{{ 'var(--ink-muted)' if test_result.ok else 'var(--red)' }};">
+      {% if test_result.ok %}Verbindung erfolgreich{% else %}Fehler bei Schritt „{{ {'config':'Konfiguration','connect':'Verbindungsaufbau','bind':'Anmeldung (Bind)','search':'Suche'}.get(test_result.stage, test_result.stage) }}"{% endif %}
+    </span>
+    {{ test_result.message }}
+    {% if test_result.ok %}
+    <ul style="margin:10px 0 0; padding-left:20px;">
+      <li>Name: <b>{{ test_result.name }}</b>{% if test_result.email %} &middot; {{ test_result.email }}{% endif %}</li>
+      <li>Aktives Mitglied erkannt: <b>{{ 'Ja' if test_result.is_active_member else 'Nein' }}</b></li>
+      <li>Wahlleitung erkannt: <b>{{ 'Ja' if test_result.is_wahlleitung else 'Nein' }}</b></li>
+      <li>Gruppenmitgliedschaften (memberOf): {{ test_result.member_of|join(', ') if test_result.member_of else '—' }}</li>
+    </ul>
+    {% endif %}
+  </div>
+  {% endif %}
+
   <form method="post" action="/admin/einstellungen">
     <div class="form-group">
       <label>LDAP aktiv</label>
@@ -49,7 +66,17 @@
       <label>LDAP-Attribut &ndash; Benutzername</label>
       <input type="text" name="ldap_attr_uid" value="{{ s.LDAP_ATTR_UID }}">
     </div>
+    <div class="form-group" style="border-top:1px solid var(--border); padding-top:20px;">
+      <label>Verbindungstest &ndash; Benutzername</label>
+      <input type="text" name="test_username" value="{{ test_username or '' }}" placeholder="vorname.nachname">
+      <div class="form-hint">Testet Server, Bind und Suche mit den obigen (auch ungespeicherten) Werten &ndash; ohne LDAP-Login durchzuführen.</div>
+    </div>
+    <div class="form-group">
+      <label>Verbindungstest &ndash; Passwort</label>
+      <input type="password" name="test_password" value="">
+    </div>
     <div class="form-actions">
+      <button type="submit" formaction="/admin/einstellungen/test" class="btn btn-ghost">Verbindung testen</button>
       <button type="submit" class="btn btn-primary">Speichern</button>
     </div>
   </form>

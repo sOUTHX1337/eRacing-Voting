@@ -5,7 +5,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
-from .. import settings as settings_service
+from .. import ldap_client, settings as settings_service
 from ..db import get_db
 from ..deps import get_current_member, require_wahlleitung
 from ..models import Member
@@ -65,6 +65,30 @@ def settings_form(
     )
 
 
+def _form_to_settings(
+    ldap_enabled: str,
+    ldap_server: str,
+    ldap_base_dn: str,
+    ldap_bind_dn_template: str,
+    ldap_active_group_dn: str,
+    ldap_wahlleitung_group_dn: str,
+    ldap_attr_name: str,
+    ldap_attr_email: str,
+    ldap_attr_uid: str,
+) -> dict:
+    return {
+        "LDAP_ENABLED": ldap_enabled.strip().lower() in ("1", "true", "yes", "on"),
+        "LDAP_SERVER": ldap_server,
+        "LDAP_BASE_DN": ldap_base_dn,
+        "LDAP_BIND_DN_TEMPLATE": ldap_bind_dn_template,
+        "LDAP_ACTIVE_GROUP_DN": ldap_active_group_dn,
+        "LDAP_WAHLLEITUNG_GROUP_DN": ldap_wahlleitung_group_dn,
+        "LDAP_ATTR_NAME": ldap_attr_name,
+        "LDAP_ATTR_EMAIL": ldap_attr_email,
+        "LDAP_ATTR_UID": ldap_attr_uid,
+    }
+
+
 @router.post("/admin/einstellungen")
 def settings_save(
     request: Request,
@@ -98,3 +122,50 @@ def settings_save(
         },
     )
     return RedirectResponse("/admin/einstellungen?saved=1", status_code=303)
+
+
+@router.post("/admin/einstellungen/test")
+def settings_test(
+    request: Request,
+    ldap_enabled: str = Form("false"),
+    ldap_server: str = Form(""),
+    ldap_base_dn: str = Form(""),
+    ldap_bind_dn_template: str = Form(""),
+    ldap_active_group_dn: str = Form(""),
+    ldap_wahlleitung_group_dn: str = Form(""),
+    ldap_attr_name: str = Form("cn"),
+    ldap_attr_email: str = Form("mail"),
+    ldap_attr_uid: str = Form("uid"),
+    test_username: str = Form(""),
+    test_password: str = Form(""),
+    member: Optional[Member] = Depends(get_current_member),
+    db: Session = Depends(get_db),
+):
+    guard = require_wahlleitung(member)
+    if guard:
+        return guard
+
+    submitted = _form_to_settings(
+        ldap_enabled,
+        ldap_server,
+        ldap_base_dn,
+        ldap_bind_dn_template,
+        ldap_active_group_dn,
+        ldap_wahlleitung_group_dn,
+        ldap_attr_name,
+        ldap_attr_email,
+        ldap_attr_uid,
+    )
+    result = ldap_client.test_connection(test_username, test_password, submitted)
+
+    return templates.TemplateResponse(
+        "admin_settings.html",
+        {
+            "request": request,
+            "member": member,
+            "s": submitted,
+            "saved": False,
+            "test_result": result,
+            "test_username": test_username,
+        },
+    )
