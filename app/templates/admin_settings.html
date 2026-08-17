@@ -33,38 +33,39 @@
     </div>
     <div class="form-group">
       <label>LDAP-Server</label>
-      <input type="text" name="ldap_server" value="{{ s.LDAP_SERVER }}" placeholder="ldaps://ldap.la-eracing.de">
+      <input type="text" name="ldap_server" value="{{ s.LDAP_SERVER }}" placeholder="ldaps://euer-domain-controller:636">
     </div>
     <div class="form-group">
       <label>Base DN</label>
-      <input type="text" name="ldap_base_dn" value="{{ s.LDAP_BASE_DN }}" placeholder="dc=la-eracing,dc=de">
+      <input type="text" name="ldap_base_dn" value="{{ s.LDAP_BASE_DN }}" placeholder="OU=AzureSync,DC=la-eracing,DC=com">
     </div>
     <div class="form-group">
       <label>Bind-DN-Vorlage</label>
-      <input type="text" name="ldap_bind_dn_template" value="{{ s.LDAP_BIND_DN_TEMPLATE }}" placeholder="uid={username},ou=people,dc=la-eracing,dc=de">
-      <div class="form-hint">{username} wird durch den eingegebenen Benutzernamen ersetzt.</div>
+      <input type="text" name="ldap_bind_dn_template" value="{{ s.LDAP_BIND_DN_TEMPLATE }}" placeholder="{username}@la-eracing.com">
+      <div class="form-hint">{username} wird durch den eingegebenen Benutzernamen ersetzt. Bei Active Directory per UserPrincipalName binden (<code>{username}@la-eracing.com</code>), nicht per <code>uid=...</code>-DN.</div>
     </div>
     <div class="form-group">
       <label>Gruppe aktive Mitglieder (DN)</label>
-      <input type="text" name="ldap_active_group_dn" value="{{ s.LDAP_ACTIVE_GROUP_DN }}" placeholder="cn=aktive-mitglieder,ou=groups,dc=la-eracing,dc=de">
+      <input type="text" name="ldap_active_group_dn" value="{{ s.LDAP_ACTIVE_GROUP_DN }}" placeholder="CN=Aktive-Mitglieder,OU=AzureSync,DC=la-eracing,DC=com">
       <div class="form-hint">Nur Mitglieder dieser Gruppe sind stimmberechtigt (Satzung §5, §12 Abs. 1).</div>
     </div>
     <div class="form-group">
       <label>Gruppe Wahlleitung (DN, optional)</label>
-      <input type="text" name="ldap_wahlleitung_group_dn" value="{{ s.LDAP_WAHLLEITUNG_GROUP_DN }}" placeholder="cn=wahlleitung,ou=groups,dc=la-eracing,dc=de">
+      <input type="text" name="ldap_wahlleitung_group_dn" value="{{ s.LDAP_WAHLLEITUNG_GROUP_DN }}" placeholder="CN=Wahlleitung,OU=AzureSync,DC=la-eracing,DC=com">
       <div class="form-hint">Mitglieder dieser Gruppe werden beim Login automatisch zu Wahlleitung ernannt (nie automatisch entzogen). Leer lassen, um Wahlleitung ausschließlich über <a href="/admin/mitglieder">Mitgliederverwaltung</a> zu vergeben.</div>
     </div>
     <div class="form-group">
       <label>LDAP-Attribut &ndash; Name</label>
-      <input type="text" name="ldap_attr_name" value="{{ s.LDAP_ATTR_NAME }}">
+      <input type="text" name="ldap_attr_name" value="{{ s.LDAP_ATTR_NAME }}" placeholder="displayName">
     </div>
     <div class="form-group">
       <label>LDAP-Attribut &ndash; E-Mail</label>
-      <input type="text" name="ldap_attr_email" value="{{ s.LDAP_ATTR_EMAIL }}">
+      <input type="text" name="ldap_attr_email" value="{{ s.LDAP_ATTR_EMAIL }}" placeholder="mail">
     </div>
     <div class="form-group">
       <label>LDAP-Attribut &ndash; Benutzername</label>
-      <input type="text" name="ldap_attr_uid" value="{{ s.LDAP_ATTR_UID }}">
+      <input type="text" name="ldap_attr_uid" value="{{ s.LDAP_ATTR_UID }}" placeholder="sAMAccountName">
+      <div class="form-hint">Bei Active Directory <code>sAMAccountName</code>, nicht <code>uid</code> &ndash; das Attribut gibt es dort standardmäßig nicht.</div>
     </div>
     <div class="form-group" style="border-top:1px solid var(--border); padding-top:20px;">
       <label>Verbindungstest &ndash; Benutzername</label>
