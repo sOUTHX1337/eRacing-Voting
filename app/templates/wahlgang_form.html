@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Neuer Wahlgang{% endblock %}
+{% block header_meta %}Neuer Wahlgang &middot; {{ assembly.title }}{% endblock %}
+{% block content %}
+<div class="content-narrow">
+  <form method="post" action="/versammlungen/{{ assembly.id }}/wahlgaenge">
+    <div class="form-group">
+      <label>Titel</label>
+      <input type="text" name="title" placeholder="z. B. Wahl 1. Vorsitz" required>
+    </div>
+    <div class="form-group">
+      <label>Beschreibung (optional)</label>
+      <textarea name="description"></textarea>
+    </div>
+    <div class="form-group">
+      <label>Typ</label>
+      <select name="kind" id="kind">
+        <option value="ja_nein_enthaltung">Ja / Nein / Enthaltung</option>
+        <option value="personenwahl">Personenwahl</option>
+      </select>
+    </div>
+    <div class="form-group" id="candidates-group" style="display:none;">
+      <label>Kandidierende (eine Zeile je Person)</label>
+      <textarea name="candidates" placeholder="J. Amberger&#10;F. Reindl"></textarea>
+    </div>
+    <div class="form-group">
+      <label>Abstimmungsmodus</label>
+      <select name="secret">
+        <option value="true">Geheim</option>
+        <option value="false">Offen (namentlich)</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Mehrheitsart</label>
+      <select name="majority_type">
+        <option value="einfach">Einfache Mehrheit</option>
+        <option value="dreiviertel">Dreiviertelmehrheit</option>
+        <option value="vierfuenftel">Vierfünftelmehrheit</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Berechnungsbasis</label>
+      <select name="majority_basis">
+        <option value="abgegebene_stimmen">Abgegebene gültige Stimmen</option>
+        <option value="stimmberechtigte_mitglieder">Alle stimmberechtigten Mitglieder</option>
+      </select>
+      <div class="callout">
+        Bei „alle stimmberechtigten Mitglieder" zählt Abwesenheit wie „Nein" &ndash; passend für Beschlüsse wie die Änderung des Vereinszwecks (Satzung §12 Abs. 3b).
+      </div>
+    </div>
+    <div class="form-actions">
+      <a href="/versammlungen/{{ assembly.id }}" class="btn btn-ghost">Abbrechen</a>
+      <button type="submit" class="btn btn-primary">Anlegen</button>
+    </div>
+  </form>
+</div>
+<script>
+  const kindSelect = document.getElementById('kind');
+  const candidatesGroup = document.getElementById('candidates-group');
+  function sync() { candidatesGroup.style.display = kindSelect.value === 'personenwahl' ? 'block' : 'none'; }
+  kindSelect.addEventListener('change', sync);
+  sync();
+</script>
+{% endblock %}

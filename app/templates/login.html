@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Login · LA eRacing Voting</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="login-shell">
+    <div class="login-card">
+      <div class="wordmark"><span class="slashes">//</span><span class="name">LA eRacing</span></div>
+      <div class="product">Voting</div>
+      <form method="post" action="/login">
+        <div class="field">
+          <label for="username">Benutzername</label>
+          <input type="text" id="username" name="username" placeholder="vorname.nachname" autofocus required>
+        </div>
+        <div class="field">
+          <label for="password">Passwort</label>
+          <input type="password" id="password" name="password" required>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Anmelden</button>
+      </form>
+      {% if error %}
+      <div class="login-error">{{ error }}</div>
+      {% endif %}
+      <div class="login-foot">
+        Login über euer <b>LDAP-Vereinskonto</b>. Aktive Mitglieder werden automatisch als stimmberechtigt erkannt.
+        {% if dev_mode %}<br><br>DEV-Modus (kein LDAP verbunden) &ndash; Test-Logins siehe <code>app/dev_users.py</code>.{% endif %}
+      </div>
+    </div>
+  </div>
+</body>
+</html>

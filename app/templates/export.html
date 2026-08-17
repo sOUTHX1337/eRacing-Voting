@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Export{% endblock %}
+{% block header_meta %}Export &amp; Protokoll{% endblock %}
+{% block content %}
+<div class="content">
+  <div class="stat-row">
+    <div class="stat-card">
+      <span class="lbl">Versammlung</span>
+      <div class="big" style="font-size:22px;">{{ assembly.title }}</div>
+      <div class="sub">{{ assembly.date.strftime('%d.%m.%Y') }} &middot; {{ assembly.status.value }}</div>
+    </div>
+    <div class="stat-card">
+      <span class="lbl">Wahlgänge</span>
+      <div class="big">{{ ballots|length }}</div>
+      <div class="sub">{{ ballots|selectattr('status.value','equalto','geschlossen')|list|length }} geschlossen</div>
+    </div>
+    <div class="stat-card">
+      <span class="lbl">Protokollpflicht</span>
+      <div class="big" style="font-size:22px;">§12 Abs. 4</div>
+      <div class="sub">Vollmachten mit Namen &amp; Stimmverteilung dokumentiert</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h3>Enthaltene Inhalte</h3></div>
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Abschnitt</th><th>Inhalt</th><th>Bei geheimen Wahlgängen</th></tr></thead>
+      <tbody>
+        <tr><td class="row-title">Anwesenheitsliste</td><td>alle Check-ins, inkl. Zeitpunkt</td><td class="row-sub">unverändert sichtbar</td></tr>
+        <tr><td class="row-title">Vollmachtsliste</td><td>Übertragend, Empfangend, Weisung, Status</td><td class="row-sub">unverändert sichtbar &ndash; Pflicht nach §12 Abs. 4</td></tr>
+        <tr><td class="row-title">Wahlgänge</td><td>Titel, Typ, Mehrheitsart, Ergebnis</td><td class="row-sub">nur Summen, keine Einzelstimmen</td></tr>
+        <tr><td class="row-title">Einzelstimmen</td><td>wer wie gestimmt hat</td><td class="row-sub">nicht enthalten &ndash; anonymisiert</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h3>Exportieren</h3></div>
+    <div class="panel-body">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; padding-bottom:16px; border-bottom:1px solid var(--border); margin-bottom:16px;">
+        <div>
+          <div class="row-title">Protokoll (PDF)</div>
+          <div class="row-sub">Unterschriftsfertig &middot; Tagesordnung, Anwesenheit, Vollmachten, Ergebnisse</div>
+        </div>
+        <a href="/versammlungen/{{ assembly.id }}/export.pdf" class="btn btn-primary">PDF exportieren</a>
+      </div>
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+        <div>
+          <div class="row-title">Rohdaten (CSV)</div>
+          <div class="row-sub">Ein Export je Wahlgang &middot; für Weiterverarbeitung/Archiv</div>
+        </div>
+        <a href="/versammlungen/{{ assembly.id }}/export.csv" class="btn btn-ghost">CSV exportieren</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}{{ ballot.title }}{% endblock %}
+{% block header_meta %}Stimmabgabe{% endblock %}
+{% block content %}
+<div class="content-narrow">
+  <div style="text-align:center; margin-bottom:22px;">
+    <div style="margin-bottom:12px;">
+      <span class="status-pill outline">{{ 'Geheime Abstimmung' if ballot.secret else 'Offene Abstimmung' }}</span>
+    </div>
+    <h2 class="disp" style="font-size:27px; margin:0 0 8px;">{{ ballot.title }}</h2>
+    {% if ballot.description %}<p style="color:var(--ink-muted); font-size:14.5px;">{{ ballot.description }}</p>{% endif %}
+    <div style="max-width:320px; margin:20px auto 0;">
+      <div style="display:flex; justify-content:space-between; font-family:'Antonio'; font-size:11px; letter-spacing:.05em; color:var(--ink-faint); text-transform:uppercase; margin-bottom:6px;">
+        <span>Abgestimmt</span><span>{{ participations_count }} / {{ total_slots }}</span>
+      </div>
+      <div style="height:5px; background:var(--surface-2); border-radius:100px; overflow:hidden;">
+        <div style="display:block; height:100%; background:var(--ink); width:{{ progress_pct }}%;"></div>
+      </div>
+    </div>
+  </div>
+
+  {% if flash %}<div class="callout flash">{{ flash }}</div>{% endif %}
+
+  <form method="post" action="/wahlgaenge/{{ ballot.id }}/abstimmen">
+    {% if slot_eigen.applicable %}
+    <div class="ballot">
+      <div class="ballot-head">Deine Stimme</div>
+      {% if slot_eigen.already_voted %}
+        <div class="callout ok">Du hast bereits abgestimmt.</div>
+      {% else %}
+      <div class="ballot-options">
+        {% for value, label in options %}
+        <input type="radio" id="eigen-{{ value }}" name="choice_eigen" value="{{ value }}" required>
+        <label for="eigen-{{ value }}">{{ label }}</label>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if slot_vollmacht.applicable %}
+    <div class="ballot">
+      <div class="ballot-head">Übertragene Stimme &middot; {{ slot_vollmacht.proxy.from_member.name }}</div>
+      {% if slot_vollmacht.already_voted %}
+        <div class="callout ok">Diese Stimme wurde bereits abgegeben.</div>
+      {% else %}
+      <div class="ballot-options">
+        {% for value, label in options %}
+        <input type="radio" id="vm-{{ value }}" name="choice_vollmacht" value="{{ value }}"
+          {% if slot_vollmacht.locked_choice %}{% if slot_vollmacht.locked_choice == value %}checked{% endif %} disabled{% endif %}
+          {% if not slot_vollmacht.locked_choice %}required{% endif %}>
+        <label for="vm-{{ value }}">{{ label }}</label>
+        {% endfor %}
+      </div>
+      {% if slot_vollmacht.locked_choice %}
+        <input type="hidden" name="choice_vollmacht" value="{{ slot_vollmacht.locked_choice }}">
+        <div class="form-hint">🔒 Durch schriftliche Weisung festgelegt &middot; nicht änderbar (Satzung §11 Abs. 5)</div>
+      {% else %}
+        <div class="form-hint">Keine Weisung hinterlegt &middot; du entscheidest nach eigenem Ermessen (Satzung §11 Abs. 5)</div>
+      {% endif %}
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if (slot_eigen.applicable and not slot_eigen.already_voted) or (slot_vollmacht.applicable and not slot_vollmacht.already_voted) %}
+    <button type="submit" class="btn btn-primary btn-block">Stimmen abgeben</button>
+    {% endif %}
+  </form>
+</div>
+{% endblock %}

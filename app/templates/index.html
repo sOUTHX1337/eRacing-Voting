@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Übersicht{% endblock %}
+{% block header_meta %}Übersicht{% endblock %}
+{% block content %}
+<div class="content">
+
+  {% if flash %}<div class="callout flash">{{ flash }}</div>{% endif %}
+
+  {% if member.is_wahlleitung %}
+  <div class="panel">
+    <div class="panel-head"><h3>Neue Versammlung</h3></div>
+    <div class="panel-body">
+      <form method="post" action="/versammlungen">
+        <div class="stat-row" style="margin-bottom:0;">
+          <div class="form-group" style="margin-bottom:0;">
+            <label>Titel</label>
+            <input type="text" name="title" placeholder="Ordentliche Mitgliederversammlung" required>
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label>Datum</label>
+            <input type="date" name="date" required>
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label>Typ</label>
+            <select name="type">
+              <option value="ordentlich">Ordentlich</option>
+              <option value="ausserordentlich">Außerordentlich</option>
+              <option value="virtuell">Virtuell</option>
+            </select>
+          </div>
+        </div>
+        {% if assemblies %}
+        <div class="form-group">
+          <label>Wiederholungsversammlung von (optional, Satzung §12 Abs. 2 &ndash; kein Quorum nötig)</label>
+          <select name="repeat_of_id">
+            <option value="">&mdash; keine &mdash;</option>
+            {% for a in assemblies %}
+            <option value="{{ a.id }}">{{ a.title }} ({{ a.date.strftime('%d.%m.%Y') }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endif %}
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Anlegen</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="panel">
+    <div class="panel-head"><h3>Versammlungen</h3></div>
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Titel</th><th>Datum</th><th>Typ</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        {% for a in assemblies %}
+        <tr>
+          <td class="row-title">{{ a.title }}</td>
+          <td>{{ a.date.strftime('%d.%m.%Y') }}</td>
+          <td>{{ a.type.value }}</td>
+          <td>
+            {% if a.status.value == 'laufend' %}<span class="status-pill alert">Läuft</span>
+            {% elif a.status.value == 'abgeschlossen' %}<span class="status-pill neutral">Abgeschlossen</span>
+            {% else %}<span class="status-pill outline">Vorbereitung</span>{% endif %}
+          </td>
+          <td><a href="/versammlungen/{{ a.id }}" class="btn-sm">Öffnen</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="row-sub">Noch keine Versammlung angelegt.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

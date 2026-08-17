@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ergebnis · {{ ballot.title }}</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<div class="result-shell">
+  <div class="result-eyebrow">
+    <a href="/versammlungen/{{ ballot.assembly_id }}" style="color:#8a8a8a;">&larr; {{ ballot.assembly.title }}</a>
+    &middot; {{ 'Ergebnis · Wahlgang geschlossen' if closed else 'Wahlgang läuft noch' }}
+  </div>
+  <h2 class="result-title">{{ ballot.title }}</h2>
+
+  {% if not closed %}
+  <p style="color:#9a9a9a; max-width:52ch;">Solange der Wahlgang läuft, wird kein Zwischenstand angezeigt &ndash; nur die Beteiligung: <b style="color:#e4e4e4;">{{ participations_count }} / {{ total_slots }}</b> abgestimmt.</p>
+  {% else %}
+  <div class="result-bars">
+    {% for label, count, is_leading in labeled_counts %}
+    <div>
+      <div class="rbar-top"><span class="rbar-name">{{ label }}</span><span class="rbar-num">{{ count }}</span></div>
+      <div class="rbar-track">
+        <div class="rbar-fill {{ 'accent' if is_leading else '' }}" style="width:{{ (count / (result.valid_total or 1) * 100) if result.valid_total else 0 }}%;"></div>
+        {% if is_leading %}
+        <div class="tmark" style="left:{{ result.needed_percentage * 100 }}%;"></div>
+        <div class="tlabel" style="left:calc({{ result.needed_percentage * 100 }}% - 34px);">{{ (result.needed_percentage * 100)|round|int }}% nötig</div>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+    <div>
+      <div class="rbar-top"><span class="rbar-name">Nicht abgestimmt</span><span class="rbar-num">{{ result.not_voted }}</span></div>
+      <div class="rbar-track"><div class="rbar-fill" style="width:{{ (result.not_voted / (result.valid_total or 1) * 100) if result.valid_total else 0 }}%; opacity:.35;"></div></div>
+    </div>
+  </div>
+
+  <div class="verdict"><span class="disp">{{ 'Angenommen' if result.passed else 'Abgelehnt' }}</span></div>
+  <div class="verdict-sub">
+    <b>{{ result.leading_count }} von {{ result.valid_total }} {{ result.basis_label }}</b>
+    ({{ (result.percentage * 100)|round(1) }}&nbsp;%) &ndash; benötigt sind {{ (result.needed_percentage * 100)|round|int }}&nbsp;% ({{ ballot.majority_type.value }}).
+  </div>
+  {% endif %}
+</div>
+</body>
+</html>

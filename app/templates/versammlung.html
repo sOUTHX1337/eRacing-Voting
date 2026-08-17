@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}{{ assembly.title }}{% endblock %}
+{% block header_meta %}{{ assembly.title }} &middot; <b>{{ assembly.date.strftime('%d.%m.%Y') }}</b>{% endblock %}
+{% block content %}
+<div class="content">
+
+  {% if flash %}<div class="callout flash">{{ flash }}</div>{% endif %}
+
+  <div class="panel-head" style="padding:0; margin-bottom:20px; border:none;">
+    <h3 style="font-size:15px;">
+      {% if assembly.status.value == 'laufend' %}<span class="status-pill alert">Läuft</span>
+      {% elif assembly.status.value == 'abgeschlossen' %}<span class="status-pill neutral">Abgeschlossen</span>
+      {% else %}<span class="status-pill outline">Vorbereitung</span>{% endif %}
+    </h3>
+    {% if member.is_wahlleitung %}
+    <div style="display:flex; gap:8px;">
+      {% if assembly.status.value == 'vorbereitung' %}
+      <form method="post" action="/versammlungen/{{ assembly.id }}/start"><button class="btn btn-primary">Versammlung starten</button></form>
+      {% elif assembly.status.value == 'laufend' %}
+      <form method="post" action="/versammlungen/{{ assembly.id }}/close"><button class="btn btn-ghost">Versammlung abschließen</button></form>
+      {% endif %}
+      <a href="/versammlungen/{{ assembly.id }}/export" class="btn-sm">Export</a>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="stat-row">
+    <div class="stat-card">
+      <span class="lbl">Beschlussfähigkeit</span>
+      <div class="big">{{ quorum.total }} / {{ quorum.needed }}</div>
+      <div class="sub">
+        {% if quorum.required %}anwesend + vertreten &middot; benötigt 1/3 der {{ assembly.eligible_member_count }} aktiven Mitglieder
+        {% else %}Wiederholungsversammlung &middot; Quorum entfällt (Satzung §12 Abs. 2){% endif %}
+      </div>
+    </div>
+    <div class="stat-card">
+      <span class="lbl">Vollmachten</span>
+      <div class="big">{{ proxies|selectattr('status.value','equalto','aktiv')|list|length }}</div>
+      <div class="sub">aktiv &middot; max. 1 je Person</div>
+    </div>
+    <div class="stat-card">
+      <span class="lbl">Wahlgänge</span>
+      <div class="big">{{ ballots|selectattr('status.value','equalto','offen')|list|length }} / {{ ballots|length }}</div>
+      <div class="sub">offen von insgesamt {{ ballots|length }}</div>
+    </div>
+  </div>
+
+  {% if not member.is_wahlleitung and assembly.status.value == 'laufend' %}
+  <div class="panel">
+    <div class="panel-body" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+      <div>
+        <div class="row-title">Anwesenheit</div>
+        <div class="row-sub">{% if checked_in %}Du bist eingecheckt.{% else %}Bitte melde dich für die Beschlussfähigkeit als anwesend.{% endif %}</div>
+      </div>
+      {% if not checked_in %}
+      <form method="post" action="/versammlungen/{{ assembly.id }}/checkin"><button class="btn btn-primary">Jetzt einchecken</button></form>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="panel">
+    <div class="panel-head">
+      <h3>Wahlgänge</h3>
+      {% if member.is_wahlleitung %}<a href="/versammlungen/{{ assembly.id }}/wahlgaenge/neu" class="btn btn-primary">+ Wahlgang anlegen</a>{% endif %}
+    </div>
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Titel</th><th>Typ</th><th>Modus</th><th>Mehrheit</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        {% for b in ballots %}
+        <tr>
+          <td><div class="row-title">{{ b.title }}</div></td>
+          <td>{{ 'Personenwahl' if b.kind.value == 'personenwahl' else 'Ja/Nein/Enth.' }}</td>
+          <td>{{ 'Geheim' if b.secret else 'Offen' }}</td>
+          <td>{{ b.majority_type.value }}</td>
+          <td>
+            {% if b.status.value == 'offen' %}<span class="status-pill alert">Offen</span>
+            {% elif b.status.value == 'geschlossen' %}<span class="status-pill neutral">Geschlossen</span>
+            {% else %}<span class="status-pill outline">Entwurf</span>{% endif %}
+          </td>
+          <td style="display:flex; gap:6px; white-space:nowrap;">
+            {% if b.status.value == 'geschlossen' %}
+              <a href="/wahlgaenge/{{ b.id }}/ergebnis" class="btn-sm">Ergebnis</a>
+            {% elif b.status.value == 'offen' %}
+              <a href="/wahlgaenge/{{ b.id }}/abstimmen" class="btn-sm">Abstimmen</a>
+              {% if member.is_wahlleitung %}<form class="inline" method="post" action="/wahlgaenge/{{ b.id }}/close"><button class="btn-sm red">Schließen</button></form>{% endif %}
+            {% elif member.is_wahlleitung %}
+              <form class="inline" method="post" action="/wahlgaenge/{{ b.id }}/open"><button class="btn-sm">Öffnen</button></form>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="row-sub">Noch keine Wahlgänge.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  {% if member.is_wahlleitung %}
+  <div class="panel">
+    <div class="panel-head"><h3>Vollmachten</h3></div>
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Übertragend</th><th>Empfangend</th><th>Weisung</th><th>Status</th></tr></thead>
+      <tbody>
+        {% for p in proxies %}
+        <tr>
+          <td>{{ p.from_member.name }}</td>
+          <td>{{ p.to_member.name }}</td>
+          <td class="row-sub">{{ p.instruction or '—' }}</td>
+          <td>
+            {% if p.status.value == 'aktiv' %}<span class="status-pill neutral">Aktiv</span>
+            {% else %}<span class="status-pill outline">Erloschen</span>{% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="row-sub">Noch keine Vollmachten erfasst.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <div class="panel-body">
+      <form method="post" action="/versammlungen/{{ assembly.id }}/proxies">
+        <div class="stat-row" style="margin-bottom:0;">
+          <div class="form-group" style="margin-bottom:0;">
+            <label>Übertragend</label>
+            <select name="from_member_id" required>
+              {% for m in active_members %}<option value="{{ m.id }}">{{ m.name }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label>Empfangend (muss anwesend sein)</label>
+            <select name="to_member_id" required>
+              {% for m in active_members %}<option value="{{ m.id }}">{{ m.name }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label>Weisung (optional)</label>
+            <input type="text" name="instruction" placeholder="z. B. Ja bei §7">
+          </div>
+        </div>
+        <div class="form-actions"><button type="submit" class="btn btn-primary">Vollmacht erfassen</button></div>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

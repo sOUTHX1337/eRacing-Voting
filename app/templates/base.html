@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Voting{% endblock %} · LA eRacing</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  {% if member %}
+  <div class="app-header">
+    <a href="/" class="wordmark"><span class="slashes">//</span><span class="name">LA eRacing</span></a>
+    <div class="divider"></div>
+    <div class="meta">{% block header_meta %}Voting{% endblock %}</div>
+    <div class="spacer"></div>
+    <div class="who">{{ member.name }}{% if member.is_wahlleitung %} · Wahlleitung{% endif %} · <a href="/logout">Abmelden</a></div>
+  </div>
+  {% endif %}
+  {% block content %}{% endblock %}
+</body>
+</html>
