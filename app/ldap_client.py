@@ -1,8 +1,9 @@
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from ldap3 import ALL, Connection, Server
 from ldap3.core.exceptions import LDAPBindError, LDAPException, LDAPSocketOpenError
+from ldap3.utils.conv import escape_filter_chars
 
 from .dev_users import DEV_USERS
 
@@ -81,7 +82,7 @@ def _authenticate_ldap(username: str, password: str, settings: Dict) -> Optional
         attr_email = settings["LDAP_ATTR_EMAIL"]
         conn.search(
             search_base=settings["LDAP_BASE_DN"],
-            search_filter=f"({attr_uid}={username})",
+            search_filter=f"({attr_uid}={escape_filter_chars(username)})",
             attributes=[attr_name, attr_email, "memberOf"],
         )
         if not conn.entries:
@@ -103,6 +104,34 @@ def _authenticate_ldap(username: str, password: str, settings: Dict) -> Optional
     )
 
 
+def _bind(username: str, password: str, settings: Dict) -> Tuple[Optional[Connection], Optional[Tuple[str, str]]]:
+    """Baut eine gebundene Connection auf oder gibt (None, (stage, message)) zurueck.
+
+    Gemeinsamer Verbindungsaufbau fuer alle Aktionen, die - anders als authenticate() -
+    mehr als den eigenen Account lesen muessen (Sync, Suche).
+    """
+    try:
+        server = Server(settings["LDAP_SERVER"], get_info=ALL, connect_timeout=5)
+    except Exception as exc:
+        return None, ("connect", f"Server-Adresse ungültig: {exc}")
+
+    try:
+        bind_dn = settings["LDAP_BIND_DN_TEMPLATE"].format(username=username)
+    except (KeyError, IndexError) as exc:
+        return None, ("config", f"Bind-DN-Vorlage ungültig, Platzhalter falsch benannt: {exc}")
+
+    try:
+        conn = Connection(server, user=bind_dn, password=password, auto_bind=True, receive_timeout=10)
+    except LDAPBindError as exc:
+        return None, ("bind", f"Bind fehlgeschlagen - Benutzername/Passwort falsch: {exc}")
+    except LDAPSocketOpenError as exc:
+        return None, ("connect", f"Server nicht erreichbar: {exc}")
+    except LDAPException as exc:
+        return None, ("connect", f"LDAP-Fehler beim Verbindungsaufbau: {exc}")
+
+    return conn, None
+
+
 def test_connection(username: str, password: str, settings: Dict) -> LdapTestResult:
     """Prueft Server, Bind und Suche einzeln durch und meldet, wo genau es hakt.
 
@@ -114,26 +143,10 @@ def test_connection(username: str, password: str, settings: Dict) -> LdapTestRes
     if not username or not password:
         return LdapTestResult(False, "config", "Test-Benutzername und -Passwort werden benoetigt.")
 
-    try:
-        server = Server(settings["LDAP_SERVER"], get_info=ALL, connect_timeout=5)
-    except Exception as exc:
-        return LdapTestResult(False, "connect", f"Server-Adresse ungueltig: {exc}")
-
-    try:
-        bind_dn = settings["LDAP_BIND_DN_TEMPLATE"].format(username=username)
-    except (KeyError, IndexError) as exc:
-        return LdapTestResult(False, "config", f"Bind-DN-Vorlage ungueltig, Platzhalter falsch benannt: {exc}")
-
-    try:
-        conn = Connection(server, user=bind_dn, password=password, auto_bind=True, receive_timeout=5)
-    except LDAPBindError as exc:
-        return LdapTestResult(
-            False, "bind", f"Bind fehlgeschlagen - Benutzername/Passwort oder Bind-DN-Vorlage falsch: {exc}"
-        )
-    except LDAPSocketOpenError as exc:
-        return LdapTestResult(False, "connect", f"Server nicht erreichbar (Adresse/Port/Netzwerk/TLS pruefen): {exc}")
-    except LDAPException as exc:
-        return LdapTestResult(False, "connect", f"LDAP-Fehler beim Verbindungsaufbau: {exc}")
+    conn, error = _bind(username, password, settings)
+    if error:
+        stage, message = error
+        return LdapTestResult(False, stage, message)
 
     try:
         attr_uid = settings["LDAP_ATTR_UID"]
@@ -141,7 +154,7 @@ def test_connection(username: str, password: str, settings: Dict) -> LdapTestRes
         attr_email = settings["LDAP_ATTR_EMAIL"]
         found = conn.search(
             search_base=settings["LDAP_BASE_DN"],
-            search_filter=f"({attr_uid}={username})",
+            search_filter=f"({attr_uid}={escape_filter_chars(username)})",
             attributes=[attr_name, attr_email, "memberOf"],
         )
         if not found or not conn.entries:
@@ -176,6 +189,18 @@ def test_connection(username: str, password: str, settings: Dict) -> LdapTestRes
         conn.unbind()
 
 
+def _entries_to_members(entries, attr_uid: str, attr_name: str, attr_email: str) -> List[Dict[str, Optional[str]]]:
+    members = []
+    for entry in entries:
+        uid = str(getattr(entry, attr_uid, "")).strip()
+        if not uid:
+            continue
+        name = str(getattr(entry, attr_name, uid)) or uid
+        email = str(getattr(entry, attr_email, "")) or None
+        members.append({"uid": uid, "name": name, "email": email})
+    return members
+
+
 def fetch_active_group_members(username: str, password: str, settings: Dict) -> LdapSyncResult:
     """Listet alle Mitglieder der Gruppe fuer aktive Mitglieder auf.
 
@@ -190,24 +215,10 @@ def fetch_active_group_members(username: str, password: str, settings: Dict) -> 
     if not settings["LDAP_ACTIVE_GROUP_DN"]:
         return LdapSyncResult(False, "config", "Keine Gruppe für aktive Mitglieder konfiguriert.")
 
-    try:
-        server = Server(settings["LDAP_SERVER"], get_info=ALL, connect_timeout=5)
-    except Exception as exc:
-        return LdapSyncResult(False, "connect", f"Server-Adresse ungültig: {exc}")
-
-    try:
-        bind_dn = settings["LDAP_BIND_DN_TEMPLATE"].format(username=username)
-    except (KeyError, IndexError) as exc:
-        return LdapSyncResult(False, "config", f"Bind-DN-Vorlage ungültig, Platzhalter falsch benannt: {exc}")
-
-    try:
-        conn = Connection(server, user=bind_dn, password=password, auto_bind=True, receive_timeout=10)
-    except LDAPBindError as exc:
-        return LdapSyncResult(False, "bind", f"Bind fehlgeschlagen - Benutzername/Passwort falsch: {exc}")
-    except LDAPSocketOpenError as exc:
-        return LdapSyncResult(False, "connect", f"Server nicht erreichbar: {exc}")
-    except LDAPException as exc:
-        return LdapSyncResult(False, "connect", f"LDAP-Fehler beim Verbindungsaufbau: {exc}")
+    conn, error = _bind(username, password, settings)
+    if error:
+        stage, message = error
+        return LdapSyncResult(False, stage, message)
 
     try:
         attr_uid = settings["LDAP_ATTR_UID"]
@@ -215,7 +226,7 @@ def fetch_active_group_members(username: str, password: str, settings: Dict) -> 
         attr_email = settings["LDAP_ATTR_EMAIL"]
         found = conn.search(
             search_base=settings["LDAP_BASE_DN"],
-            search_filter=f"(memberOf={settings['LDAP_ACTIVE_GROUP_DN']})",
+            search_filter=f"(memberOf={escape_filter_chars(settings['LDAP_ACTIVE_GROUP_DN'])})",
             attributes=[attr_uid, attr_name, attr_email],
             paged_size=500,
         )
@@ -226,16 +237,49 @@ def fetch_active_group_members(username: str, password: str, settings: Dict) -> 
                 "Suche fehlgeschlagen - Base DN oder Gruppen-DN prüfen (evtl. keine Leserechte auf die Gruppe).",
             )
 
-        members = []
-        for entry in conn.entries:
-            uid = str(getattr(entry, attr_uid, "")).strip()
-            if not uid:
-                continue
-            name = str(getattr(entry, attr_name, uid)) or uid
-            email = str(getattr(entry, attr_email, "")) or None
-            members.append({"uid": uid, "name": name, "email": email})
-
+        members = _entries_to_members(conn.entries, attr_uid, attr_name, attr_email)
         return LdapSyncResult(True, "done", f"{len(members)} Mitglied(er) in der Gruppe gefunden.", members=members)
+    except LDAPException as exc:
+        return LdapSyncResult(False, "search", f"Suche fehlgeschlagen: {exc}")
+    finally:
+        conn.unbind()
+
+
+def search_members_by_name(username: str, password: str, settings: Dict, query: str) -> LdapSyncResult:
+    """Sucht im gesamten Verzeichnis (nicht nur der aktive-Mitglieder-Gruppe) nach
+    Namens-Treffern - fuer den gezielten Import einzelner Personen, ohne auf deren
+    ersten Login oder den Gruppen-Sync zu warten.
+
+    `username`/`password` werden nur fuer diesen einen Aufruf verwendet, nicht gespeichert.
+    """
+    if not settings["LDAP_ENABLED"]:
+        return LdapSyncResult(False, "config", "LDAP ist deaktiviert - Suche nicht möglich.")
+    if not username or not password:
+        return LdapSyncResult(False, "config", "Benutzername und Passwort für die Suche werden benötigt.")
+    if not query or not query.strip():
+        return LdapSyncResult(False, "config", "Bitte einen Namen (oder Teil davon) eingeben.")
+
+    conn, error = _bind(username, password, settings)
+    if error:
+        stage, message = error
+        return LdapSyncResult(False, stage, message)
+
+    try:
+        attr_uid = settings["LDAP_ATTR_UID"]
+        attr_name = settings["LDAP_ATTR_NAME"]
+        attr_email = settings["LDAP_ATTR_EMAIL"]
+        safe_query = escape_filter_chars(query.strip())
+        found = conn.search(
+            search_base=settings["LDAP_BASE_DN"],
+            search_filter=f"({attr_name}=*{safe_query}*)",
+            attributes=[attr_uid, attr_name, attr_email],
+            size_limit=25,
+        )
+        if not found:
+            return LdapSyncResult(True, "done", "Keine Treffer.", members=[])
+
+        members = _entries_to_members(conn.entries, attr_uid, attr_name, attr_email)
+        return LdapSyncResult(True, "done", f"{len(members)} Treffer.", members=members)
     except LDAPException as exc:
         return LdapSyncResult(False, "search", f"Suche fehlgeschlagen: {exc}")
     finally:

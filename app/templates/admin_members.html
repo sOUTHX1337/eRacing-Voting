@@ -20,6 +20,10 @@
   </div>
   {% endif %}
 
+  {% if import_summary is defined and import_summary %}
+  <div class="callout ok flash">{{ import_summary }}</div>
+  {% endif %}
+
   <div class="panel">
     <div class="panel-head"><h3>Mitglieder</h3></div>
     <div class="table-scroll">
@@ -95,6 +99,74 @@
       <p class="form-hint" style="margin-top:12px;">
         Zugangsdaten werden nur für diesen einen Abgleich verwendet, nicht gespeichert.
       </p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h3>Per Name suchen &amp; importieren</h3></div>
+    <div class="panel-body">
+      <p class="form-hint" style="margin:0 0 16px;">
+        Sucht direkt im gesamten Verzeichnis nach Namen &ndash; unabhängig von der Gruppe „aktive Mitglieder".
+        Praktisch, um einzelne Personen gezielt zu importieren, ohne auf deren ersten Login oder den
+        Gruppen-Sync zu warten.
+      </p>
+      <form method="post" action="/admin/mitglieder/suchen">
+        <div class="stat-row" style="margin-bottom:0;">
+          <div class="form-group" style="margin-bottom:0;">
+            <label>Name (oder Teil davon)</label>
+            <input type="text" name="query" value="{{ search_query or '' }}" placeholder="Mustermann">
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label>Benutzername (eigener AD-Account reicht)</label>
+            <input type="text" name="search_username" value="{{ search_username or '' }}" placeholder="vorname.nachname">
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label>Passwort</label>
+            <input type="password" name="search_password" value="">
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Suchen</button>
+        </div>
+      </form>
+      <p class="form-hint" style="margin-top:12px;">
+        Zugangsdaten werden nur für diese eine Suche verwendet, nicht gespeichert.
+      </p>
+
+      {% if search_result is defined and search_result and not search_result.ok %}
+      <div class="callout flash" style="margin-top:16px;">
+        <span style="display:block; font-family:'Antonio'; font-weight:700; font-size:11px; letter-spacing:.06em; text-transform:uppercase; margin-bottom:4px; color:var(--red);">
+          Fehler bei Schritt „{{ {'config':'Konfiguration','connect':'Verbindungsaufbau','bind':'Anmeldung (Bind)','search':'Suche'}.get(search_result.stage, search_result.stage) }}"
+        </span>
+        {{ search_result.message }}
+      </div>
+      {% endif %}
+
+      {% if search_matches is defined and search_matches %}
+      <div class="table-scroll" style="margin-top:16px;">
+        <table>
+          <thead><tr><th></th><th>Name</th><th>Benutzername</th><th>E-Mail</th></tr></thead>
+          <tbody>
+            {% for m in search_matches %}
+            <tr>
+              <td>
+                {% if m.already_imported %}<span class="status-pill outline">schon importiert</span>
+                {% else %}<input type="checkbox" name="candidates" value="{{ m.uid }}|{{ m.name }}|{{ m.email or '' }}" form="import-form">{% endif %}
+              </td>
+              <td class="row-title">{{ m.name }}</td>
+              <td class="row-sub">{{ m.uid }}</td>
+              <td class="row-sub">{{ m.email or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <form id="import-form" method="post" action="/admin/mitglieder/importieren" style="margin-top:14px;">
+        <button type="submit" class="btn btn-primary">Ausgewählte importieren</button>
+      </form>
+      {% elif search_result is defined and search_result and search_result.ok %}
+      <p class="form-hint" style="margin-top:16px;">Keine Treffer für „{{ search_query }}".</p>
+      {% endif %}
     </div>
   </div>
 

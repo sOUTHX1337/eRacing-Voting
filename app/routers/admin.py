@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
@@ -156,6 +156,78 @@ def sync_members(
             "sync_summary": sync_summary,
             "sync_username": sync_username,
         },
+    )
+
+
+@router.post("/admin/mitglieder/suchen")
+def search_members(
+    request: Request,
+    query: str = Form(""),
+    search_username: str = Form(""),
+    search_password: str = Form(""),
+    member: Optional[Member] = Depends(get_current_member),
+    db: Session = Depends(get_db),
+):
+    guard = require_wahlleitung(member)
+    if guard:
+        return guard
+
+    ldap_settings = settings_service.get_ldap_settings(db)
+    result = ldap_client.search_members_by_name(search_username, search_password, ldap_settings, query)
+
+    search_matches = None
+    if result.ok:
+        existing_uids = {row[0] for row in db.query(Member.ldap_uid).all()}
+        search_matches = [{**m, "already_imported": m["uid"] in existing_uids} for m in result.members]
+
+    members = db.query(Member).order_by(Member.name).all()
+    return templates.TemplateResponse(
+        "admin_members.html",
+        {
+            "request": request,
+            "member": member,
+            "members": members,
+            "search_result": result,
+            "search_matches": search_matches,
+            "search_query": query,
+            "search_username": search_username,
+        },
+    )
+
+
+@router.post("/admin/mitglieder/importieren")
+def import_members(
+    request: Request,
+    candidates: List[str] = Form([]),
+    member: Optional[Member] = Depends(get_current_member),
+    db: Session = Depends(get_db),
+):
+    guard = require_wahlleitung(member)
+    if guard:
+        return guard
+
+    imported = 0
+    for raw in candidates:
+        parts = raw.split("|", 2)
+        uid = parts[0].strip() if parts else ""
+        if not uid:
+            continue
+        name = parts[1].strip() if len(parts) > 1 and parts[1].strip() else uid
+        email = parts[2].strip() if len(parts) > 2 and parts[2].strip() else None
+
+        existing = db.query(Member).filter(Member.ldap_uid == uid).one_or_none()
+        if existing is None:
+            db.add(
+                Member(ldap_uid=uid, name=name, email=email, status=MemberStatus.aktiv, is_wahlleitung=False)
+            )
+            imported += 1
+    db.commit()
+
+    import_summary = f"{imported} Mitglied(er) importiert." if imported else "Nichts importiert."
+    members = db.query(Member).order_by(Member.name).all()
+    return templates.TemplateResponse(
+        "admin_members.html",
+        {"request": request, "member": member, "members": members, "import_summary": import_summary},
     )
 
 
