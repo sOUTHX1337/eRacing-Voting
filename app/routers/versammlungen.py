@@ -73,7 +73,12 @@ def assembly_dashboard(
 
     ballots = db.query(Ballot).filter(Ballot.assembly_id == assembly.id).order_by(Ballot.created_at).all()
     proxies = db.query(Proxy).filter(Proxy.assembly_id == assembly.id).order_by(Proxy.created_at).all()
-    active_members = db.query(Member).filter(Member.status == MemberStatus.aktiv).order_by(Member.name).all()
+    active_members = (
+        db.query(Member)
+        .filter(Member.status == MemberStatus.aktiv, Member.hidden_from_proxies == False)  # noqa: E712
+        .order_by(Member.name)
+        .all()
+    )
     quorum = compute_quorum(db, assembly)
     checked_in = (
         db.query(Attendance)

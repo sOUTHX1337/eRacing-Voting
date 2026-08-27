@@ -92,6 +92,9 @@ class Member(Base):
     email: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     status: Mapped[MemberStatus] = mapped_column(Enum(MemberStatus), default=MemberStatus.aktiv)
     is_wahlleitung: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Taucht trotz aktivem Status nicht in den Vollmacht-Dropdowns auf (weder
+    # als uebertragend noch als empfangend waehlbar) - unabhaengig vom Stimmrecht.
+    hidden_from_proxies: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     @property

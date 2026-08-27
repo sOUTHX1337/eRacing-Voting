@@ -3,11 +3,28 @@
 {% block header_meta %}Mitgliederverwaltung{% endblock %}
 {% block content %}
 <div class="content">
+
+  {% if sync_result is defined and sync_result %}
+  <div class="callout {{ 'ok' if sync_result.ok else '' }} flash">
+    <span style="display:block; font-family:'Antonio'; font-weight:700; font-size:11px; letter-spacing:.06em; text-transform:uppercase; margin-bottom:4px; color:{{ 'var(--ink-muted)' if sync_result.ok else 'var(--red)' }};">
+      {% if sync_result.ok %}Synchronisierung abgeschlossen{% else %}Fehler bei Schritt „{{ {'config':'Konfiguration','connect':'Verbindungsaufbau','bind':'Anmeldung (Bind)','search':'Suche'}.get(sync_result.stage, sync_result.stage) }}"{% endif %}
+    </span>
+    {% if sync_result.ok %}{{ sync_summary }}{% else %}{{ sync_result.message }}{% endif %}
+  </div>
+  {% endif %}
+
+  {% if delete_error is defined and delete_error %}
+  <div class="callout flash">
+    <span style="display:block; font-family:'Antonio'; font-weight:700; font-size:11px; letter-spacing:.06em; text-transform:uppercase; margin-bottom:4px; color:var(--red);">Löschen nicht möglich</span>
+    {{ delete_error }}
+  </div>
+  {% endif %}
+
   <div class="panel">
     <div class="panel-head"><h3>Mitglieder</h3></div>
     <div class="table-scroll">
     <table>
-      <thead><tr><th>Name</th><th>E-Mail</th><th>Status</th><th>Wahlleitung</th><th></th></tr></thead>
+      <thead><tr><th>Name</th><th>E-Mail</th><th>Status</th><th>Wahlleitung</th><th>Vollmachten</th><th></th></tr></thead>
       <tbody>
         {% for m in members %}
         <tr>
@@ -19,26 +36,77 @@
             {% else %}<span class="status-pill outline">Nein</span>{% endif %}
           </td>
           <td>
+            {% if m.hidden_from_proxies %}<span class="status-pill outline">Ausgeblendet</span>
+            {% else %}<span class="status-pill neutral">Sichtbar</span>{% endif %}
+          </td>
+          <td style="display:flex; gap:6px; flex-wrap:wrap; white-space:nowrap;">
             {% if m.id != member.id %}
             <form class="inline" method="post" action="/admin/mitglieder/{{ m.id }}/toggle-wahlleitung">
               <button class="btn-sm{% if not m.is_wahlleitung %} red{% endif %}">
-                {{ 'Entziehen' if m.is_wahlleitung else 'Ernennen' }}
+                {{ 'Wahlleitung entziehen' if m.is_wahlleitung else 'Zu Wahlleitung ernennen' }}
               </button>
+            </form>
+            {% endif %}
+            <form class="inline" method="post" action="/admin/mitglieder/{{ m.id }}/toggle-proxy-hidden">
+              <button class="btn-sm">
+                {{ 'Für Vollmachten einblenden' if m.hidden_from_proxies else 'Für Vollmachten ausblenden' }}
+              </button>
+            </form>
+            {% if m.id != member.id %}
+            <form class="inline" method="post" action="/admin/mitglieder/{{ m.id }}/delete"
+              onsubmit="return confirm('„{{ m.name }}“ endgültig löschen? Geht nur, wenn keine Historie (Anwesenheit/Vollmacht/Stimme) vorliegt.');">
+              <button class="btn-sm red">Löschen</button>
             </form>
             {% endif %}
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="5" class="row-sub">Noch keine Mitglieder (erst nach dem ersten Login sichtbar).</td></tr>
+        <tr><td colspan="6" class="row-sub">Noch keine Mitglieder (erst nach dem ersten Login oder einer Synchronisierung sichtbar).</td></tr>
         {% endfor %}
       </tbody>
     </table>
     </div>
   </div>
+
+  <div class="panel">
+    <div class="panel-head"><h3>Mit LDAP-Gruppe synchronisieren</h3></div>
+    <div class="panel-body">
+      <p class="form-hint" style="margin:0 0 16px;">
+        Importiert alle Mitglieder der Gruppe „aktive Mitglieder" und setzt Mitglieder, die dort nicht mehr
+        gelistet sind, auf <b>passiv</b> (kein Stimmrecht mehr) &ndash; der Datensatz selbst bleibt erhalten,
+        damit vergangene Protokolle (Anwesenheit, Vollmachten, Ergebnisse) vollständig bleiben. Wird nur
+        ausgelöst, wenn du auf den Button klickst.
+      </p>
+      <form method="post" action="/admin/mitglieder/sync">
+        <div class="stat-row" style="margin-bottom:0;">
+          <div class="form-group" style="margin-bottom:0;">
+            <label>Benutzername (eigener AD-Account reicht)</label>
+            <input type="text" name="sync_username" value="{{ sync_username or '' }}" placeholder="vorname.nachname">
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label>Passwort</label>
+            <input type="password" name="sync_password" value="">
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Jetzt synchronisieren</button>
+        </div>
+      </form>
+      <p class="form-hint" style="margin-top:12px;">
+        Zugangsdaten werden nur für diesen einen Abgleich verwendet, nicht gespeichert.
+      </p>
+    </div>
+  </div>
+
   <p class="form-hint" style="max-width:64ch;">
     Mitglieder der LDAP-Gruppe <code>LDAP_WAHLLEITUNG_GROUP_DN</code> werden beim Login automatisch zu Wahlleitung
     ernannt, aber nie automatisch entzogen. Entziehen sowie zusätzliche Ernennungen außerhalb der LDAP-Gruppe
     laufen ausschließlich hier.
+  </p>
+  <p class="form-hint" style="max-width:64ch;">
+    „Für Vollmachten ausblenden" nimmt jemanden nur aus den Übertragend-/Empfangend-Auswahllisten bei neuen
+    Vollmachten – Stimmrecht und alles andere bleiben unberührt. „Löschen" entfernt den Datensatz vollständig,
+    geht aber nur, wenn niemand in einer vergangenen Versammlung darauf verweist.
   </p>
 </div>
 {% endblock %}
