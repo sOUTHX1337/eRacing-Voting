@@ -1,14 +1,46 @@
+import secrets
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
-from .. import ldap_client, settings as settings_service
+from .. import config, ldap_client, settings as settings_service
 from ..db import get_db
 from ..models import Member, MemberStatus
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+
+ADMIN_LDAP_UID = "__break_glass_admin__"
+
+
+def _is_break_glass_login(username: str, password: str) -> bool:
+    if not config.ADMIN_USERNAME or not config.ADMIN_PASSWORD:
+        return False
+    return secrets.compare_digest(username, config.ADMIN_USERNAME) and secrets.compare_digest(
+        password, config.ADMIN_PASSWORD
+    )
+
+
+def _get_break_glass_member(db: Session) -> Member:
+    member = db.query(Member).filter(Member.ldap_uid == ADMIN_LDAP_UID).one_or_none()
+    if member is None:
+        member = Member(
+            ldap_uid=ADMIN_LDAP_UID,
+            name="Notfall-Admin",
+            email=None,
+            status=MemberStatus.aktiv,
+            is_wahlleitung=True,
+        )
+        db.add(member)
+    else:
+        # Selbstheilung: dieser Zugang soll IMMER vollen Zugriff haben, egal was
+        # zwischenzeitlich ueber /admin/mitglieder daran geaendert wurde.
+        member.status = MemberStatus.aktiv
+        member.is_wahlleitung = True
+    db.commit()
+    return member
 
 
 @router.get("/login")
@@ -26,6 +58,11 @@ def login_submit(
     password: str = Form(...),
     db: Session = Depends(get_db),
 ):
+    if _is_break_glass_login(username, password):
+        member = _get_break_glass_member(db)
+        request.session["member_id"] = member.id
+        return RedirectResponse("/", status_code=303)
+
     ldap_settings = settings_service.get_ldap_settings(db)
     ldap_user = ldap_client.authenticate(username, password, ldap_settings)
     if not ldap_user:

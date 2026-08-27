@@ -37,3 +37,9 @@ LDAP_ATTR_UID = os.environ.get("LDAP_ATTR_UID", "uid")
 
 # 1/3 der aktiven Mitglieder, Satzung §12 Abs. 1
 QUORUM_FRACTION = 1 / 3
+
+# Notfall-Zugang: funktioniert immer, unabhaengig von LDAP_ENABLED und vom
+# Zustand der LDAP-Einstellungen (z.B. falls ihr euch dort aussperrt).
+# Leer lassen (Standard) = deaktiviert.
+ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
