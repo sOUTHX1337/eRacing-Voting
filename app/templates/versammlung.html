@@ -50,13 +50,89 @@
     <div class="panel-body" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
       <div>
         <div class="row-title">Anwesenheit</div>
-        <div class="row-sub">{% if checked_in %}Du bist eingecheckt.{% else %}Bitte melde dich für die Beschlussfähigkeit als anwesend.{% endif %}</div>
+        <div class="row-sub">
+          {% if own_attendance_status == 'confirmed' %}Deine Anwesenheit ist von der Wahlleitung bestätigt &ndash; du kannst abstimmen.
+          {% elif own_attendance_status == 'pending' %}Anfrage gesendet &ndash; wartet auf Bestätigung durch die Wahlleitung. Du kannst erst danach abstimmen.
+          {% else %}Bitte melde dich für die Beschlussfähigkeit als anwesend.{% endif %}
+        </div>
       </div>
-      {% if not checked_in %}
+      {% if own_attendance_status == 'none' %}
       <form method="post" action="/versammlungen/{{ assembly.id }}/checkin"><button class="btn btn-primary">Jetzt einchecken</button></form>
       {% endif %}
     </div>
   </div>
+  {% endif %}
+
+  {% if member.is_wahlleitung %}
+  <div class="panel">
+    <div class="panel-head"><h3>Anwesenheit bestätigen</h3></div>
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Mitglied</th><th>Angefragt um</th><th></th></tr></thead>
+      <tbody>
+        {% for a in pending_attendances %}
+        <tr>
+          <td class="row-title">{{ a.member.name }}</td>
+          <td class="row-sub">{{ a.checked_in_at.strftime('%H:%M') }}</td>
+          <td style="display:flex; gap:6px; white-space:nowrap;">
+            <form class="inline" method="post" action="/versammlungen/{{ assembly.id }}/anwesenheit/{{ a.member_id }}/bestaetigen">
+              <button class="btn-sm">Bestätigen</button>
+            </form>
+            <form class="inline" method="post" action="/versammlungen/{{ assembly.id }}/anwesenheit/{{ a.member_id }}/entfernen">
+              <button class="btn-sm red">Ablehnen</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" class="row-sub">Keine offenen Anfragen.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <div class="panel-body" style="border-top:1px solid var(--border);">
+      <div style="display:flex; gap:10px; align-items:end; flex-wrap:wrap;">
+        <div class="form-group" style="margin-bottom:0; flex:1; min-width:200px;">
+          <label>Direkt einchecken (ohne eigenes Gerät)</label>
+          <select id="direct-checkin-select">
+            {% for m in not_checked_in_members %}<option value="{{ m.id }}">{{ m.name }}</option>{% endfor %}
+          </select>
+        </div>
+        <button type="button" class="btn btn-primary" onclick="submitDirectCheckin()">Einchecken &amp; bestätigen</button>
+      </div>
+    </div>
+    {% if confirmed_attendances %}
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Bestätigt anwesend</th><th>Um</th><th></th></tr></thead>
+      <tbody>
+        {% for a in confirmed_attendances %}
+        <tr>
+          <td class="row-title">{{ a.member.name }}</td>
+          <td class="row-sub">{{ (a.confirmed_at or a.checked_in_at).strftime('%H:%M') }}</td>
+          <td>
+            <form class="inline" method="post" action="/versammlungen/{{ assembly.id }}/anwesenheit/{{ a.member_id }}/entfernen"
+              onsubmit="return confirm('Anwesenheit von {{ a.member.name }} zurücknehmen?');">
+              <button class="btn-sm">Entfernen</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+  </div>
+  <script>
+    function submitDirectCheckin() {
+      const sel = document.getElementById('direct-checkin-select');
+      if (!sel.value) return;
+      const form = document.createElement('form');
+      form.method = 'post';
+      form.action = '/versammlungen/{{ assembly.id }}/anwesenheit/' + sel.value + '/bestaetigen';
+      document.body.appendChild(form);
+      form.submit();
+    }
+  </script>
   {% endif %}
 
   <div class="panel">

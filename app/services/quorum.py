@@ -18,7 +18,11 @@ class QuorumStatus:
 
 
 def compute_quorum(db: Session, assembly: Assembly) -> QuorumStatus:
-    present_count = db.query(Attendance).filter(Attendance.assembly_id == assembly.id).count()
+    present_count = (
+        db.query(Attendance)
+        .filter(Attendance.assembly_id == assembly.id, Attendance.confirmed == True)  # noqa: E712
+        .count()
+    )
     represented_count = (
         db.query(Proxy)
         .filter(Proxy.assembly_id == assembly.id, Proxy.status == ProxyStatus.aktiv)

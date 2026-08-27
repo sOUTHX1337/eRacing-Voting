@@ -15,7 +15,30 @@
   <h2 class="result-title">{{ ballot.title }}</h2>
 
   {% if not closed %}
-  <p style="color:#9a9a9a; max-width:52ch;">Solange der Wahlgang läuft, wird kein Zwischenstand angezeigt &ndash; nur die Beteiligung: <b style="color:#e4e4e4;">{{ participations_count }} / {{ total_slots }}</b> abgestimmt.</p>
+  <p style="color:#9a9a9a; max-width:52ch; margin-bottom:24px;">Solange der Wahlgang läuft, wird kein Zwischenstand angezeigt &ndash; nur die Beteiligung der anwesenden Stimmen (Vollmachten eingerechnet).</p>
+  <div style="max-width:420px;">
+    <div class="rbar-top"><span class="rbar-name" id="live-label">Abgegeben</span><span class="rbar-num" id="live-cast">{{ participations_count }}</span></div>
+    <div class="rbar-track"><div class="rbar-fill" id="live-bar" style="width:{{ ((participations_count / total_slots * 100) if total_slots else 0)|round|int }}%;"></div></div>
+    <div style="margin-top:14px; font-family:'Antonio'; font-weight:700; font-size:13px; letter-spacing:.05em; color:#8a8a8a; text-transform:uppercase;">
+      <span id="live-remaining">{{ total_slots - participations_count }}</span> noch offen von <span id="live-total">{{ total_slots }}</span> anwesenden Stimmen
+    </div>
+  </div>
+  <script>
+    (function () {
+      function poll() {
+        fetch('/wahlgaenge/{{ ballot.id }}/status').then(function (r) { return r.json(); }).then(function (d) {
+          if (d.error) return;
+          document.getElementById('live-cast').textContent = d.cast;
+          document.getElementById('live-remaining').textContent = d.remaining;
+          document.getElementById('live-total').textContent = d.total;
+          var pct = d.total ? Math.round((d.cast / d.total) * 100) : 0;
+          document.getElementById('live-bar').style.width = pct + '%';
+          if (d.status !== 'offen') { window.location.reload(); }
+        }).catch(function () {});
+      }
+      setInterval(poll, 3000);
+    })();
+  </script>
   {% else %}
   <div class="result-bars">
     {% for label, count, is_leading in labeled_counts %}

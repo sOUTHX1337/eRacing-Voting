@@ -2,7 +2,7 @@ import re
 from typing import List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
@@ -65,6 +65,35 @@ def _voted(db: Session, ballot_id: int, member_id: int, slot: VoteSlot) -> bool:
     )
 
 
+def _confirmed_present(db: Session, assembly_id: int, member_id: int) -> bool:
+    return (
+        db.query(Attendance)
+        .filter(
+            Attendance.assembly_id == assembly_id,
+            Attendance.member_id == member_id,
+            Attendance.confirmed == True,  # noqa: E712
+        )
+        .one_or_none()
+        is not None
+    )
+
+
+def _slot_counts(db: Session, ballot: Ballot):
+    participations_count = db.query(Participation).filter(Participation.ballot_id == ballot.id).count()
+    confirmed_present = (
+        db.query(Attendance)
+        .filter(Attendance.assembly_id == ballot.assembly_id, Attendance.confirmed == True)  # noqa: E712
+        .count()
+    )
+    active_proxies = (
+        db.query(Proxy)
+        .filter(Proxy.assembly_id == ballot.assembly_id, Proxy.status == ProxyStatus.aktiv)
+        .count()
+    )
+    total_slots = confirmed_present + active_proxies
+    return participations_count, total_slots
+
+
 @router.get("/wahlgaenge/{ballot_id}/abstimmen")
 def vote_form(
     ballot_id: int,
@@ -82,26 +111,20 @@ def vote_form(
 
     options = _options(ballot)
     proxy = _active_proxy_for(db, ballot, member)
+    confirmed_present = _confirmed_present(db, ballot.assembly_id, member.id)
 
     slot_eigen = {
-        "applicable": member.stimmberechtigt,
+        "applicable": member.stimmberechtigt and confirmed_present,
         "already_voted": _voted(db, ballot.id, member.id, VoteSlot.eigen),
     }
     slot_vollmacht = {
-        "applicable": proxy is not None,
+        "applicable": proxy is not None and confirmed_present,
         "already_voted": proxy is not None and _voted(db, ballot.id, member.id, VoteSlot.vollmacht),
         "proxy": proxy,
         "locked_choice": _resolve_locked_choice(proxy.instruction, options) if proxy else None,
     }
 
-    participations_count = db.query(Participation).filter(Participation.ballot_id == ballot.id).count()
-    present = db.query(Attendance).filter(Attendance.assembly_id == ballot.assembly_id).count()
-    proxies = (
-        db.query(Proxy)
-        .filter(Proxy.assembly_id == ballot.assembly_id, Proxy.status == ProxyStatus.aktiv)
-        .count()
-    )
-    total_slots = present + proxies
+    participations_count, total_slots = _slot_counts(db, ballot)
     progress_pct = round((participations_count / total_slots) * 100) if total_slots else 0
 
     return templates.TemplateResponse(
@@ -116,6 +139,7 @@ def vote_form(
             "participations_count": participations_count,
             "total_slots": total_slots,
             "progress_pct": progress_pct,
+            "confirmed_present": confirmed_present,
             "flash": None,
         },
     )
@@ -137,9 +161,11 @@ def cast_vote(
 
     options = _options(ballot)
     valid_values = {v for v, _ in options}
+    confirmed_present = _confirmed_present(db, ballot.assembly_id, member.id)
 
     if (
-        choice_eigen
+        confirmed_present
+        and choice_eigen
         and member.stimmberechtigt
         and choice_eigen in valid_values
         and not _voted(db, ballot.id, member.id, VoteSlot.eigen)
@@ -155,7 +181,7 @@ def cast_vote(
         )
 
     proxy = _active_proxy_for(db, ballot, member)
-    if proxy is not None and not _voted(db, ballot.id, member.id, VoteSlot.vollmacht):
+    if confirmed_present and proxy is not None and not _voted(db, ballot.id, member.id, VoteSlot.vollmacht):
         locked = _resolve_locked_choice(proxy.instruction, options)
         final_choice = locked or (choice_vollmacht if choice_vollmacht in valid_values else None)
         if final_choice:
@@ -187,14 +213,7 @@ def ergebnis(
         return RedirectResponse("/", status_code=303)
 
     closed = ballot.status == BallotStatus.geschlossen
-    participations_count = db.query(Participation).filter(Participation.ballot_id == ballot.id).count()
-    present = db.query(Attendance).filter(Attendance.assembly_id == ballot.assembly_id).count()
-    proxies = (
-        db.query(Proxy)
-        .filter(Proxy.assembly_id == ballot.assembly_id, Proxy.status == ProxyStatus.aktiv)
-        .count()
-    )
-    total_slots = present + proxies
+    participations_count, total_slots = _slot_counts(db, ballot)
 
     result = None
     labeled_counts = None
@@ -227,4 +246,28 @@ def ergebnis(
             "result": result,
             "labeled_counts": labeled_counts,
         },
+    )
+
+
+@router.get("/wahlgaenge/{ballot_id}/status")
+def ballot_status(
+    ballot_id: int,
+    member: Optional[Member] = Depends(get_current_member),
+    db: Session = Depends(get_db),
+):
+    """Fuer Live-Polling: nur Zaehlstaende, keine Stimminhalte."""
+    if member is None:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    ballot = db.get(Ballot, ballot_id)
+    if ballot is None:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+
+    participations_count, total_slots = _slot_counts(db, ballot)
+    return JSONResponse(
+        {
+            "status": ballot.status.value,
+            "cast": participations_count,
+            "total": total_slots,
+            "remaining": max(total_slots - participations_count, 0),
+        }
     )

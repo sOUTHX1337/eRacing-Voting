@@ -28,13 +28,20 @@ def _add_missing_columns() -> None:
     `git pull` + Neustart auf dem Server reicht, ohne die DB von Hand anzufassen.
     """
     inspector = inspect(engine)
-    if not inspector.has_table("members"):
-        return  # frische DB, create_all() legt die Tabelle inkl. Spalte bereits korrekt an
 
-    existing_columns = {col["name"] for col in inspector.get_columns("members")}
-    if "hidden_from_proxies" not in existing_columns:
+    if inspector.has_table("members"):
+        existing_columns = {col["name"] for col in inspector.get_columns("members")}
+        if "hidden_from_proxies" not in existing_columns:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE members ADD COLUMN hidden_from_proxies BOOLEAN DEFAULT 0"))
+
+    if inspector.has_table("attendances"):
+        existing_columns = {col["name"] for col in inspector.get_columns("attendances")}
         with engine.begin() as conn:
-            conn.execute(text("ALTER TABLE members ADD COLUMN hidden_from_proxies BOOLEAN DEFAULT 0"))
+            if "confirmed" not in existing_columns:
+                conn.execute(text("ALTER TABLE attendances ADD COLUMN confirmed BOOLEAN DEFAULT 0"))
+            if "confirmed_at" not in existing_columns:
+                conn.execute(text("ALTER TABLE attendances ADD COLUMN confirmed_at DATETIME"))
 
 
 def init_db() -> None:

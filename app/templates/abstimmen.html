@@ -11,15 +11,19 @@
     {% if ballot.description %}<p style="color:var(--ink-muted); font-size:14.5px;">{{ ballot.description }}</p>{% endif %}
     <div style="max-width:320px; margin:20px auto 0;">
       <div style="display:flex; justify-content:space-between; font-family:'Antonio'; font-size:11px; letter-spacing:.05em; color:var(--ink-faint); text-transform:uppercase; margin-bottom:6px;">
-        <span>Abgestimmt</span><span>{{ participations_count }} / {{ total_slots }}</span>
+        <span id="live-cast">{{ participations_count }} abgegeben</span><span id="live-remaining">{{ total_slots - participations_count }} noch offen</span>
       </div>
       <div style="height:5px; background:var(--surface-2); border-radius:100px; overflow:hidden;">
-        <div style="display:block; height:100%; background:var(--ink); width:{{ progress_pct }}%;"></div>
+        <div id="live-bar" style="display:block; height:100%; background:var(--ink); width:{{ progress_pct }}%;"></div>
       </div>
     </div>
   </div>
 
   {% if flash %}<div class="callout flash">{{ flash }}</div>{% endif %}
+
+  {% if not confirmed_present %}
+  <div class="callout">Deine Anwesenheit ist noch nicht von der Wahlleitung bestätigt &ndash; du kannst noch nicht abstimmen. Bitte kurz warten oder bei der Wahlleitung melden.</div>
+  {% endif %}
 
   <form method="post" action="/wahlgaenge/{{ ballot.id }}/abstimmen">
     {% if slot_eigen.applicable %}
@@ -67,4 +71,19 @@
     {% endif %}
   </form>
 </div>
+<script>
+  (function () {
+    function poll() {
+      fetch('/wahlgaenge/{{ ballot.id }}/status').then(function (r) { return r.json(); }).then(function (d) {
+        if (d.error) return;
+        document.getElementById('live-cast').textContent = d.cast + ' abgegeben';
+        document.getElementById('live-remaining').textContent = d.remaining + ' noch offen';
+        var pct = d.total ? Math.round((d.cast / d.total) * 100) : 0;
+        document.getElementById('live-bar').style.width = pct + '%';
+        if (d.status !== 'offen') { window.location.reload(); }
+      }).catch(function () {});
+    }
+    setInterval(poll, 3000);
+  })();
+</script>
 {% endblock %}

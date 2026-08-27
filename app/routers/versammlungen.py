@@ -80,12 +80,25 @@ def assembly_dashboard(
         .all()
     )
     quorum = compute_quorum(db, assembly)
-    checked_in = (
+
+    attendances = (
         db.query(Attendance)
-        .filter(Attendance.assembly_id == assembly.id, Attendance.member_id == member.id)
-        .one_or_none()
-        is not None
+        .filter(Attendance.assembly_id == assembly.id)
+        .order_by(Attendance.checked_in_at)
+        .all()
     )
+    pending_attendances = [a for a in attendances if not a.confirmed]
+    confirmed_attendances = [a for a in attendances if a.confirmed]
+    attended_member_ids = {a.member_id for a in attendances}
+    not_checked_in_members = [m for m in active_members if m.id not in attended_member_ids]
+
+    own_attendance = next((a for a in attendances if a.member_id == member.id), None)
+    if own_attendance is None:
+        own_attendance_status = "none"
+    elif own_attendance.confirmed:
+        own_attendance_status = "confirmed"
+    else:
+        own_attendance_status = "pending"
 
     return templates.TemplateResponse(
         "versammlung.html",
@@ -97,7 +110,10 @@ def assembly_dashboard(
             "proxies": proxies,
             "active_members": active_members,
             "quorum": quorum,
-            "checked_in": checked_in,
+            "pending_attendances": pending_attendances,
+            "confirmed_attendances": confirmed_attendances,
+            "not_checked_in_members": not_checked_in_members,
+            "own_attendance_status": own_attendance_status,
             "flash": None,
         },
     )
@@ -136,6 +152,7 @@ def close_assembly(
 def checkin(
     assembly_id: int, member: Optional[Member] = Depends(get_current_member), db: Session = Depends(get_db)
 ):
+    """Meldet sich selbst als anwesend - zaehlt erst nach Bestaetigung durch die Wahlleitung."""
     if member is None:
         return RedirectResponse("/login", status_code=303)
 
@@ -145,16 +162,64 @@ def checkin(
         .one_or_none()
     )
     if existing is None:
-        db.add(Attendance(assembly_id=assembly_id, member_id=member.id))
-        # Satzung §11 Abs. 7: eine erteilte Vollmacht erlischt automatisch,
-        # wenn die uebertragende Person persoenlich erscheint
-        db.query(Proxy).filter(
-            Proxy.assembly_id == assembly_id,
-            Proxy.from_member_id == member.id,
-            Proxy.status == ProxyStatus.aktiv,
-        ).update({Proxy.status: ProxyStatus.erloschen})
+        db.add(Attendance(assembly_id=assembly_id, member_id=member.id, confirmed=False))
         db.commit()
 
+    return RedirectResponse(f"/versammlungen/{assembly_id}", status_code=303)
+
+
+def _confirm_attendance(db: Session, assembly_id: int, member_id: int) -> None:
+    existing = (
+        db.query(Attendance)
+        .filter(Attendance.assembly_id == assembly_id, Attendance.member_id == member_id)
+        .one_or_none()
+    )
+    if existing is None:
+        db.add(Attendance(assembly_id=assembly_id, member_id=member_id, confirmed=True, confirmed_at=datetime.utcnow()))
+    elif not existing.confirmed:
+        existing.confirmed = True
+        existing.confirmed_at = datetime.utcnow()
+    # Satzung §11 Abs. 7: eine erteilte Vollmacht erlischt automatisch,
+    # sobald die uebertragende Person persoenlich (bestaetigt) teilnimmt
+    db.query(Proxy).filter(
+        Proxy.assembly_id == assembly_id,
+        Proxy.from_member_id == member_id,
+        Proxy.status == ProxyStatus.aktiv,
+    ).update({Proxy.status: ProxyStatus.erloschen})
+    db.commit()
+
+
+@router.post("/versammlungen/{assembly_id}/anwesenheit/{member_id}/bestaetigen")
+def confirm_attendance(
+    assembly_id: int,
+    member_id: int,
+    member: Optional[Member] = Depends(get_current_member),
+    db: Session = Depends(get_db),
+):
+    """Wahlleitung bestaetigt Anwesenheit - egal ob per Self-Check-in angefragt
+    oder direkt fuer jemanden ohne eigenes Geraet eingetragen."""
+    guard = require_wahlleitung(member)
+    if guard:
+        return guard
+    _confirm_attendance(db, assembly_id, member_id)
+    return RedirectResponse(f"/versammlungen/{assembly_id}", status_code=303)
+
+
+@router.post("/versammlungen/{assembly_id}/anwesenheit/{member_id}/entfernen")
+def remove_attendance(
+    assembly_id: int,
+    member_id: int,
+    member: Optional[Member] = Depends(get_current_member),
+    db: Session = Depends(get_db),
+):
+    """Lehnt eine offene Anfrage ab oder nimmt eine bestaetigte Anwesenheit zurueck."""
+    guard = require_wahlleitung(member)
+    if guard:
+        return guard
+    db.query(Attendance).filter(
+        Attendance.assembly_id == assembly_id, Attendance.member_id == member_id
+    ).delete()
+    db.commit()
     return RedirectResponse(f"/versammlungen/{assembly_id}", status_code=303)
 
 

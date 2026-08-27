@@ -131,6 +131,10 @@ class Attendance(Base):
     assembly_id: Mapped[int] = mapped_column(ForeignKey("assemblies.id"))
     member_id: Mapped[int] = mapped_column(ForeignKey("members.id"))
     checked_in_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # Erst nach Bestaetigung durch die Wahlleitung zaehlt die Anwesenheit fuer
+    # Quorum und Stimmrecht - reines Self-Check-in reicht dafuer nicht mehr.
+    confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
+    confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     assembly: Mapped["Assembly"] = relationship(back_populates="attendances")
     member: Mapped["Member"] = relationship()
