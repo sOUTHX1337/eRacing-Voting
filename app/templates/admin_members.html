@@ -170,6 +170,97 @@
     </div>
   </div>
 
+  <div class="panel">
+    <div class="panel-head"><h3>CSV-Import (Mitgliederverwaltung)</h3></div>
+    <div class="panel-body">
+      <p class="form-hint" style="margin:0 0 16px;">
+        Importiert aus einem Export eurer Mitgliederverwaltung (Semikolon-getrennt). Es werden ausschließlich
+        Zeilen mit Mitgliedsstatus <b>„Aktiv"</b> berücksichtigt &ndash; Passiv, Alumni und Ausgetreten werden
+        automatisch ignoriert. Die CSV enthält keine LDAP-Kennung: Ohne Zugangsdaten unten wird der
+        Benutzername nur aus Vorname.Nachname geraten; mit Zugangsdaten wird jede Zeile live gegen LDAP
+        abgeglichen und ihr bekommt bei mehreren oder keinen eindeutigen Treffern eine Auswahl statt freiem Text.
+      </p>
+      <form method="post" action="/admin/mitglieder/csv-vorschau" enctype="multipart/form-data">
+        <div class="stat-row" style="margin-bottom:0;">
+          <div class="form-group" style="margin-bottom:0;">
+            <label>CSV-Datei</label>
+            <input type="file" name="file" accept=".csv,text/csv" required>
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label>LDAP-Benutzername (optional, für Direktvergleich)</label>
+            <input type="text" name="search_username" value="{{ csv_search_username or '' }}" placeholder="vorname.nachname">
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label>Passwort</label>
+            <input type="password" name="search_password" value="">
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Vorschau anzeigen</button>
+        </div>
+      </form>
+      <p class="form-hint" style="margin-top:12px;">
+        Zugangsdaten werden nur für diesen Abgleich verwendet, nicht gespeichert. Ohne Angabe funktioniert der
+        Import weiterhin, nur ohne Direktvergleich.
+      </p>
+
+      {% if csv_error is defined and csv_error %}
+      <div class="callout flash" style="margin-top:16px;">{{ csv_error }}</div>
+      {% endif %}
+
+      {% if ldap_match_error is defined and ldap_match_error %}
+      <div class="callout flash" style="margin-top:16px;">LDAP-Abgleich übersprungen: {{ ldap_match_error }}</div>
+      {% endif %}
+
+      {% if csv_rows is defined and csv_rows %}
+      <p class="form-hint" style="margin-top:16px;">{{ csv_rows|length }} aktive(s) Mitglied(er) in der Datei gefunden. Benutzername bei Bedarf korrigieren, dann Auswahl importieren.</p>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th></th><th>Mitgl.-Nr.</th><th>Name</th><th>LDAP-Treffer</th><th>Benutzername (editierbar)</th><th>E-Mail (Mitgliederverwaltung)</th></tr></thead>
+          <tbody>
+            {% for r in csv_rows %}
+            <tr>
+              <td>
+                <input type="checkbox" name="import" value="{{ loop.index0 }}" form="csv-import-form" {% if not r.already_imported %}checked{% endif %}>
+              </td>
+              <td class="row-sub">{{ r.mitgliedsnummer }}</td>
+              <td class="row-title">{{ r.name }}{% if r.already_imported %} <span class="row-sub">(schon importiert)</span>{% endif %}</td>
+              <td>
+                {% if r.match_status == 'gefunden' %}<span class="status-pill neutral">Gefunden</span>
+                {% elif r.match_status == 'mehrdeutig' %}<span class="status-pill outline">{{ r.matches|length }} Treffer</span>
+                {% elif r.match_status == 'kein_treffer' %}<span class="status-pill alert">Kein Treffer</span>
+                {% else %}<span class="status-pill outline">Ungeprüft</span>{% endif %}
+              </td>
+              <td>
+                {% if r.matches %}
+                <select onchange="document.getElementById('uid-{{ loop.index0 }}').value = this.value" style="margin-bottom:6px;">
+                  {% for cand in r.matches %}
+                  <option value="{{ cand.uid }}" {% if cand.uid == r.uid %}selected{% endif %}>{{ cand.name }} ({{ cand.uid }})</option>
+                  {% endfor %}
+                  <option value="" {% if r.uid not in r.matches|map(attribute='uid')|list %}selected{% endif %}>&mdash; manuell &ndash; siehe Textfeld &mdash;</option>
+                </select><br>
+                {% endif %}
+                <input type="text" id="uid-{{ loop.index0 }}" name="uid_{{ loop.index0 }}" value="{{ r.uid }}" form="csv-import-form" style="min-width:160px;">
+              </td>
+              <td class="row-sub">
+                {{ r.email or '—' }}
+                <input type="hidden" name="name_{{ loop.index0 }}" value="{{ r.name }}" form="csv-import-form">
+                <input type="hidden" name="email_{{ loop.index0 }}" value="{{ r.email or '' }}" form="csv-import-form">
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <form id="csv-import-form" method="post" action="/admin/mitglieder/csv-importieren" style="margin-top:14px;">
+        <button type="submit" class="btn btn-primary">Ausgewählte importieren</button>
+      </form>
+      {% elif csv_rows is defined %}
+      <p class="form-hint" style="margin-top:16px;">Keine Zeilen mit Status „Aktiv" in der Datei gefunden.</p>
+      {% endif %}
+    </div>
+  </div>
+
   <p class="form-hint" style="max-width:64ch;">
     Mitglieder der LDAP-Gruppe <code>LDAP_WAHLLEITUNG_GROUP_DN</code> werden beim Login automatisch zu Wahlleitung
     ernannt, aber nie automatisch entzogen. Entziehen sowie zusätzliche Ernennungen außerhalb der LDAP-Gruppe

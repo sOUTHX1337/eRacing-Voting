@@ -284,3 +284,57 @@ def search_members_by_name(username: str, password: str, settings: Dict, query: 
         return LdapSyncResult(False, "search", f"Suche fehlgeschlagen: {exc}")
     finally:
         conn.unbind()
+
+
+def match_names(
+    username: str, password: str, settings: Dict, names: List[Tuple[str, str]]
+) -> Tuple[Optional[List[List[Dict[str, Optional[str]]]]], Optional[Tuple[str, str]]]:
+    """Sucht fuer jedes (Vorname, Nachname)-Paar auf EINER Verbindung nach LDAP-Treffern -
+    fuers CSV-Abgleich, damit nicht pro Zeile neu gebunden werden muss.
+
+    Gibt (Liste von Kandidatenlisten je Name, None) zurueck, oder (None, (stage, message))
+    wenn schon der Verbindungsaufbau scheitert. Findet die volle Namenssuche nichts, wird
+    zusaetzlich nur nach dem Nachnamen gesucht, um wenigstens Vorschlaege anzubieten.
+    """
+    if not settings["LDAP_ENABLED"] or not username or not password:
+        return None, ("config", "LDAP-Abgleich übersprungen (deaktiviert oder keine Zugangsdaten).")
+
+    conn, error = _bind(username, password, settings)
+    if error:
+        return None, error
+
+    try:
+        attr_uid = settings["LDAP_ATTR_UID"]
+        attr_name = settings["LDAP_ATTR_NAME"]
+        attr_email = settings["LDAP_ATTR_EMAIL"]
+        all_matches = []
+        for vorname, nachname in names:
+            full_query = f"{vorname} {nachname}".strip()
+            matches: List[Dict[str, Optional[str]]] = []
+            if full_query:
+                safe = escape_filter_chars(full_query)
+                if conn.search(
+                    search_base=settings["LDAP_BASE_DN"],
+                    search_filter=f"({attr_name}=*{safe}*)",
+                    attributes=[attr_uid, attr_name, attr_email],
+                    size_limit=10,
+                ):
+                    matches = _entries_to_members(conn.entries, attr_uid, attr_name, attr_email)
+
+            if not matches and nachname.strip():
+                # nichts mit vollem Namen gefunden - wenigstens per Nachname Vorschlaege anbieten
+                safe_last = escape_filter_chars(nachname.strip())
+                if conn.search(
+                    search_base=settings["LDAP_BASE_DN"],
+                    search_filter=f"({attr_name}=*{safe_last}*)",
+                    attributes=[attr_uid, attr_name, attr_email],
+                    size_limit=10,
+                ):
+                    matches = _entries_to_members(conn.entries, attr_uid, attr_name, attr_email)
+
+            all_matches.append(matches)
+        return all_matches, None
+    except LDAPException as exc:
+        return None, ("search", f"Suche fehlgeschlagen: {exc}")
+    finally:
+        conn.unbind()

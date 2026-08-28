@@ -1,6 +1,10 @@
+import csv
+import io
+import re
+import unicodedata
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import or_
@@ -14,6 +18,26 @@ from .auth import ADMIN_LDAP_UID
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+
+CSV_ACTIVE_STATUS = "aktiv"
+
+
+def _normalize_name_part(value: str) -> str:
+    value = value.strip().lower()
+    value = value.replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
+    value = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^a-z0-9]", "", value)
+
+
+def _guess_ldap_uid(vorname: str, nachname: str) -> str:
+    """Rateversuch fuer den AD-Benutzernamen (Vorname.Nachname) - bleibt in der
+    Vorschau editierbar, da die CSV selbst keine LDAP-Kennung enthaelt."""
+    first_token = vorname.split()[0] if vorname.split() else vorname
+    first = _normalize_name_part(first_token)
+    last = _normalize_name_part(nachname)
+    if first and last:
+        return f"{first}.{last}"
+    return first or last
 
 
 def _member_has_history(db: Session, member_id: int) -> bool:
@@ -224,6 +248,136 @@ def import_members(
     db.commit()
 
     import_summary = f"{imported} Mitglied(er) importiert." if imported else "Nichts importiert."
+    members = db.query(Member).order_by(Member.name).all()
+    return templates.TemplateResponse(
+        "admin_members.html",
+        {"request": request, "member": member, "members": members, "import_summary": import_summary},
+    )
+
+
+@router.post("/admin/mitglieder/csv-vorschau")
+async def csv_preview(
+    request: Request,
+    file: UploadFile = File(...),
+    search_username: str = Form(""),
+    search_password: str = Form(""),
+    member: Optional[Member] = Depends(get_current_member),
+    db: Session = Depends(get_db),
+):
+    """Liest eine Mitgliederverwaltungs-CSV (Semikolon-getrennt) ein und zeigt nur
+    Zeilen mit Mitgliedsstatus 'Aktiv' zur Bestaetigung an - Passiv/Alumni/Ausgetreten
+    werden ignoriert. Werden Zugangsdaten mitgegeben, wird jede Zeile live gegen LDAP
+    abgeglichen (ein Bind, eine Suche je Name) statt den Benutzernamen nur zu raten;
+    bei mehreren oder keinen Treffern gibt es eine Auswahl statt freiem Text."""
+    guard = require_wahlleitung(member)
+    if guard:
+        return guard
+
+    csv_error = None
+    ldap_match_error = None
+    csv_rows: List[dict] = []
+    try:
+        raw = await file.read()
+        text = raw.decode("utf-8-sig")
+        reader = csv.DictReader(io.StringIO(text), delimiter=";")
+        if reader.fieldnames is None or "Mitgliedsstatus" not in reader.fieldnames:
+            csv_error = 'Keine gültige CSV - Spalte "Mitgliedsstatus" nicht gefunden. Semikolon-getrennt?'
+        else:
+            existing_uids = {row[0] for row in db.query(Member.ldap_uid).all()}
+            for row in reader:
+                status = (row.get("Mitgliedsstatus") or "").strip().lower()
+                if status != CSV_ACTIVE_STATUS:
+                    continue
+                vorname = (row.get("Vorname") or "").strip()
+                nachname = (row.get("Name") or "").strip()
+                if not vorname and not nachname:
+                    continue
+                csv_rows.append(
+                    {
+                        "vorname": vorname,
+                        "nachname": nachname,
+                        "uid": _guess_ldap_uid(vorname, nachname),
+                        "name": f"{vorname} {nachname}".strip(),
+                        "email": (row.get("E-Mail") or "").strip() or None,
+                        "mitgliedsnummer": (row.get("Mitgliedsnummer") or "").strip(),
+                        "matches": [],
+                        "match_status": "ungeprüft",
+                    }
+                )
+                csv_rows[-1]["already_imported"] = csv_rows[-1]["uid"] in existing_uids
+
+            if csv_rows and search_username and search_password:
+                ldap_settings = settings_service.get_ldap_settings(db)
+                all_matches, error = ldap_client.match_names(
+                    search_username,
+                    search_password,
+                    ldap_settings,
+                    [(r["vorname"], r["nachname"]) for r in csv_rows],
+                )
+                if error:
+                    _, ldap_match_error = error
+                else:
+                    for r, matches in zip(csv_rows, all_matches):
+                        r["matches"] = matches
+                        if len(matches) == 1:
+                            r["match_status"] = "gefunden"
+                            r["uid"] = matches[0]["uid"]
+                            r["already_imported"] = matches[0]["uid"] in existing_uids
+                        elif len(matches) > 1:
+                            r["match_status"] = "mehrdeutig"
+                        else:
+                            r["match_status"] = "kein_treffer"
+    except Exception as exc:  # z.B. Encoding-Probleme, kaputte Datei
+        csv_error = f"CSV konnte nicht gelesen werden: {exc}"
+
+    members = db.query(Member).order_by(Member.name).all()
+    return templates.TemplateResponse(
+        "admin_members.html",
+        {
+            "request": request,
+            "member": member,
+            "members": members,
+            "csv_error": csv_error,
+            "ldap_match_error": ldap_match_error,
+            "csv_rows": csv_rows,
+            "csv_search_username": search_username,
+        },
+    )
+
+
+@router.post("/admin/mitglieder/csv-importieren")
+async def csv_import(
+    request: Request,
+    member: Optional[Member] = Depends(get_current_member),
+    db: Session = Depends(get_db),
+):
+    guard = require_wahlleitung(member)
+    if guard:
+        return guard
+
+    form = await request.form()
+    selected = form.getlist("import")
+
+    imported = skipped = 0
+    for idx in selected:
+        uid = (form.get(f"uid_{idx}") or "").strip().lower()
+        name = (form.get(f"name_{idx}") or "").strip()
+        email = (form.get(f"email_{idx}") or "").strip() or None
+        if not uid or not name:
+            skipped += 1
+            continue
+        existing = db.query(Member).filter(Member.ldap_uid == uid).one_or_none()
+        if existing is not None:
+            skipped += 1
+            continue
+        db.add(Member(ldap_uid=uid, name=name, email=email, status=MemberStatus.aktiv, is_wahlleitung=False))
+        imported += 1
+    db.commit()
+
+    import_summary = f"{imported} Mitglied(er) aus CSV importiert."
+    if skipped:
+        import_summary += f" {skipped} übersprungen (Benutzername leer oder schon vorhanden)."
+
     members = db.query(Member).order_by(Member.name).all()
     return templates.TemplateResponse(
         "admin_members.html",
