@@ -24,9 +24,11 @@ from ..models import (
     VoteSlot,
 )
 from ..services.quorum import compute_quorum, count_eligible_members
+from ..utils import static_version
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+templates.env.globals["static_version"] = static_version
 
 
 @router.get("/")

@@ -9,9 +9,11 @@ from ..db import get_db
 from ..deps import get_current_member, require_wahlleitung
 from ..models import Assembly, Ballot, Member
 from ..services import export as export_service
+from ..utils import static_version
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+templates.env.globals["static_version"] = static_version
 
 
 @router.get("/versammlungen/{assembly_id}/export")

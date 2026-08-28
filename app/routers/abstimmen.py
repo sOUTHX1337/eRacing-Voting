@@ -21,9 +21,11 @@ from ..models import (
     VoteSlot,
 )
 from ..services import majority
+from ..utils import static_version
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+templates.env.globals["static_version"] = static_version
 
 
 def _options(ballot: Ballot) -> List[Tuple[str, str]]:

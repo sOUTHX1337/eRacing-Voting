@@ -14,11 +14,12 @@ from .. import ldap_client, settings as settings_service
 from ..db import get_db
 from ..deps import get_current_member, require_wahlleitung
 from ..models import Attendance, Member, MemberStatus, Participation, Proxy, Vote
-from ..utils import normalize_uid
+from ..utils import normalize_uid, static_version
 from .auth import ADMIN_LDAP_UID
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+templates.env.globals["static_version"] = static_version
 
 CSV_ACTIVE_STATUS = "aktiv"
 

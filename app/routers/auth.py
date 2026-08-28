@@ -8,9 +8,11 @@ from sqlalchemy.orm import Session
 from .. import config, ldap_client, settings as settings_service
 from ..db import get_db
 from ..models import Member, MemberStatus
+from ..utils import static_version
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+templates.env.globals["static_version"] = static_version
 
 ADMIN_LDAP_UID = "__break_glass_admin__"
 
