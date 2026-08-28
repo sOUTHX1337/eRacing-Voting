@@ -180,6 +180,12 @@ class Ballot(Base):
     )
     custom_threshold: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     status: Mapped[BallotStatus] = mapped_column(Enum(BallotStatus), default=BallotStatus.entwurf)
+    # Schnappschuss der stimmberechtigten Mitglieder beim Oeffnen dieses Wahlgangs -
+    # Basis fuer die "aller stimmberechtigten Mitglieder"-Mehrheit. Getrennt von
+    # Assembly.eligible_member_count (das live mitlaeuft), damit ein bereits
+    # geschlossener Wahlgang protokollfest bleibt, auch wenn danach noch Mitglieder
+    # importiert werden.
+    eligible_member_count: Mapped[int] = mapped_column(default=0)
     opened_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

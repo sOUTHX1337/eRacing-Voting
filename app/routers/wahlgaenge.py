@@ -18,6 +18,7 @@ from ..models import (
     MajorityType,
     Member,
 )
+from ..services.quorum import count_eligible_members
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -92,6 +93,10 @@ def open_ballot(
     if ballot and ballot.status == BallotStatus.entwurf:
         ballot.status = BallotStatus.offen
         ballot.opened_at = datetime.utcnow()
+        # Schnappschuss der stimmberechtigten Mitglieder beim Oeffnen - haelt die
+        # "aller stimmberechtigten Mitglieder"-Mehrheit protokollfest, auch wenn
+        # danach noch weitere Mitglieder importiert werden.
+        ballot.eligible_member_count = count_eligible_members(db)
         db.commit()
     return RedirectResponse(f"/versammlungen/{ballot.assembly_id}", status_code=303)
 

@@ -31,8 +31,9 @@ def compute_result(db: Session, ballot: Ballot) -> BallotResult:
     valid_cast = sum(valid_choices.values())
     enthaltung_count = counts.get("enthaltung", 0)
 
-    assembly = ballot.assembly
-    eligible_slots = assembly.eligible_member_count  # Basis: alle stimmberechtigten Mitglieder
+    # Schnappschuss vom Oeffnen dieses Wahlgangs (nicht Assembly.eligible_member_count,
+    # das inzwischen weitergelaufen sein kann) - haelt das Ergebnis protokollfest.
+    eligible_slots = ballot.eligible_member_count
     cast_total = valid_cast + enthaltung_count
 
     if ballot.majority_basis == MajorityBasis.stimmberechtigte_mitglieder:

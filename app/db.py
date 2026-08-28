@@ -43,6 +43,24 @@ def _add_missing_columns() -> None:
             if "confirmed_at" not in existing_columns:
                 conn.execute(text("ALTER TABLE attendances ADD COLUMN confirmed_at DATETIME"))
 
+    if inspector.has_table("ballots"):
+        existing_columns = {col["name"] for col in inspector.get_columns("ballots")}
+        if "eligible_member_count" not in existing_columns:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE ballots ADD COLUMN eligible_member_count INTEGER DEFAULT 0"))
+            # Bestehende Wahlgaenge hatten diese Spalte noch nicht und liefen bisher
+            # ueber Assembly.eligible_member_count - beim Nachruesten uebernehmen wir
+            # genau diesen (bis dahin identischen) Wert, damit sich an bereits
+            # berechneten Ergebnissen nichts aendert.
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "UPDATE ballots SET eligible_member_count = ("
+                        "SELECT eligible_member_count FROM assemblies WHERE assemblies.id = ballots.assembly_id"
+                        ")"
+                    )
+                )
+
 
 def _normalize_existing_uids() -> None:
     """Case-Normalisierung fuer bestehende ldap_uid-Werte.
