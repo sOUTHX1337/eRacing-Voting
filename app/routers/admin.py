@@ -131,6 +131,23 @@ def _merge_member(db: Session, keep_id: int, remove_id: int) -> None:
     db.commit()
 
 
+def _render_members(
+    request: Request,
+    member: Member,
+    db: Session,
+    members: Optional[List[Member]] = None,
+    **extra,
+):
+    """Gemeinsames Rendering fuer /admin/mitglieder - jede Aktion dort landet
+    wieder auf derselben Seite mit der aktuellen Mitgliederliste plus ihren
+    eigenen Kontext-Keys (z.B. sync_result, csv_rows)."""
+    if members is None:
+        members = db.query(Member).order_by(Member.name).all()
+    context = {"request": request, "member": member, "members": members}
+    context.update(extra)
+    return templates.TemplateResponse("admin_members.html", context)
+
+
 @router.get("/admin/mitglieder")
 def members_admin(
     request: Request,
@@ -142,10 +159,7 @@ def members_admin(
         return guard
     members = db.query(Member).order_by(Member.name).all()
     duplicate_groups = _find_duplicate_groups(members)
-    return templates.TemplateResponse(
-        "admin_members.html",
-        {"request": request, "member": member, "members": members, "duplicate_groups": duplicate_groups},
-    )
+    return _render_members(request, member, db, members=members, duplicate_groups=duplicate_groups)
 
 
 @router.post("/admin/mitglieder/zusammenfuehren")
@@ -177,15 +191,8 @@ def merge_members(
 
     members = db.query(Member).order_by(Member.name).all()
     duplicate_groups = _find_duplicate_groups(members)
-    return templates.TemplateResponse(
-        "admin_members.html",
-        {
-            "request": request,
-            "member": member,
-            "members": members,
-            "duplicate_groups": duplicate_groups,
-            "merge_summary": merge_summary,
-        },
+    return _render_members(
+        request, member, db, members=members, duplicate_groups=duplicate_groups, merge_summary=merge_summary
     )
 
 
@@ -233,11 +240,7 @@ def delete_member(
             db.delete(target)
             db.commit()
 
-    members = db.query(Member).order_by(Member.name).all()
-    return templates.TemplateResponse(
-        "admin_members.html",
-        {"request": request, "member": member, "members": members, "delete_error": delete_error},
-    )
+    return _render_members(request, member, db, delete_error=delete_error)
 
 
 @router.post("/admin/mitglieder/sync")
@@ -301,17 +304,8 @@ def sync_members(
             f"{removed} entfernt, {demoted} auf passiv gesetzt (mit Historie)."
         )
 
-    members = db.query(Member).order_by(Member.name).all()
-    return templates.TemplateResponse(
-        "admin_members.html",
-        {
-            "request": request,
-            "member": member,
-            "members": members,
-            "sync_result": result,
-            "sync_summary": sync_summary,
-            "sync_username": sync_username,
-        },
+    return _render_members(
+        request, member, db, sync_result=result, sync_summary=sync_summary, sync_username=sync_username
     )
 
 
@@ -336,18 +330,14 @@ def search_members(
         existing_uids = {row[0] for row in db.query(Member.ldap_uid).all()}
         search_matches = [{**m, "already_imported": m["uid"] in existing_uids} for m in result.members]
 
-    members = db.query(Member).order_by(Member.name).all()
-    return templates.TemplateResponse(
-        "admin_members.html",
-        {
-            "request": request,
-            "member": member,
-            "members": members,
-            "search_result": result,
-            "search_matches": search_matches,
-            "search_query": query,
-            "search_username": search_username,
-        },
+    return _render_members(
+        request,
+        member,
+        db,
+        search_result=result,
+        search_matches=search_matches,
+        search_query=query,
+        search_username=search_username,
     )
 
 
@@ -380,11 +370,7 @@ def import_members(
     db.commit()
 
     import_summary = f"{imported} Mitglied(er) importiert." if imported else "Nichts importiert."
-    members = db.query(Member).order_by(Member.name).all()
-    return templates.TemplateResponse(
-        "admin_members.html",
-        {"request": request, "member": member, "members": members, "import_summary": import_summary},
-    )
+    return _render_members(request, member, db, import_summary=import_summary)
 
 
 @router.post("/admin/mitglieder/csv-vorschau")
@@ -462,18 +448,14 @@ async def csv_preview(
     except Exception as exc:  # z.B. Encoding-Probleme, kaputte Datei
         csv_error = f"CSV konnte nicht gelesen werden: {exc}"
 
-    members = db.query(Member).order_by(Member.name).all()
-    return templates.TemplateResponse(
-        "admin_members.html",
-        {
-            "request": request,
-            "member": member,
-            "members": members,
-            "csv_error": csv_error,
-            "ldap_match_error": ldap_match_error,
-            "csv_rows": csv_rows,
-            "csv_search_username": search_username,
-        },
+    return _render_members(
+        request,
+        member,
+        db,
+        csv_error=csv_error,
+        ldap_match_error=ldap_match_error,
+        csv_rows=csv_rows,
+        csv_search_username=search_username,
     )
 
 
@@ -510,11 +492,7 @@ async def csv_import(
     if skipped:
         import_summary += f" {skipped} übersprungen (Benutzername leer oder schon vorhanden)."
 
-    members = db.query(Member).order_by(Member.name).all()
-    return templates.TemplateResponse(
-        "admin_members.html",
-        {"request": request, "member": member, "members": members, "import_summary": import_summary},
-    )
+    return _render_members(request, member, db, import_summary=import_summary)
 
 
 @router.post("/admin/mitglieder/{member_id}/toggle-wahlleitung")

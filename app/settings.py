@@ -25,9 +25,6 @@ LDAP_KEYS = [
     "LDAP_ATTR_UID",
 ]
 
-_BOOL_KEYS = {"LDAP_ENABLED"}
-
-
 def _env_defaults() -> Dict[str, str]:
     return {key: str(getattr(env_config, key)) for key in LDAP_KEYS}
 
