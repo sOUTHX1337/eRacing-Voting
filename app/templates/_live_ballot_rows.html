@@ -1,0 +1,31 @@
+{% for b in ballots %}
+<tr>
+  <td><div class="row-title">{{ b.title }}</div></td>
+  <td>{{ 'Personenwahl' if b.kind.value == 'personenwahl' else 'Ja/Nein/Enth.' }}</td>
+  <td>{{ 'Geheim' if b.secret else 'Offen' }}</td>
+  <td>{{ b.majority_type.value }}</td>
+  <td>
+    {% if b.status.value == 'offen' %}<span class="status-pill alert">Offen</span>
+    {% elif b.status.value == 'geschlossen' %}<span class="status-pill neutral">Geschlossen</span>
+    {% else %}<span class="status-pill outline">Entwurf</span>{% endif %}
+  </td>
+  <td style="display:flex; gap:6px; white-space:nowrap;">
+    {% if b.status.value == 'geschlossen' %}
+      <a href="/wahlgaenge/{{ b.id }}/ergebnis" class="btn-sm">Ergebnis</a>
+    {% elif b.status.value == 'offen' %}
+      <a href="/wahlgaenge/{{ b.id }}/abstimmen" class="btn-sm">Abstimmen</a>
+      {% if member.is_wahlleitung %}<form class="inline" method="post" action="/wahlgaenge/{{ b.id }}/close"><button class="btn-sm red">Schließen</button></form>{% endif %}
+    {% elif member.is_wahlleitung %}
+      <form class="inline" method="post" action="/wahlgaenge/{{ b.id }}/open"><button class="btn-sm">Öffnen</button></form>
+    {% endif %}
+    {% if member.is_wahlleitung and b.status.value != 'offen' %}
+      <form class="inline" method="post" action="/wahlgaenge/{{ b.id }}/delete"
+        onsubmit="return confirm('Wahlgang „{{ b.title }}“ endgültig löschen? Das kann nicht rückgängig gemacht werden.');">
+        <button class="btn-sm red" title="Löschen">Löschen</button>
+      </form>
+    {% endif %}
+  </td>
+</tr>
+{% else %}
+<tr><td colspan="6" class="row-sub">Noch keine Wahlgänge.</td></tr>
+{% endfor %}

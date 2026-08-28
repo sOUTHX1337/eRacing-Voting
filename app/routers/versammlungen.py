@@ -229,6 +229,31 @@ def open_ballots_status(
     return JSONResponse({"open": [{"id": b.id, "title": b.title} for b in ballots]})
 
 
+@router.get("/versammlungen/{assembly_id}/live")
+def live_fragment(
+    assembly_id: int, member: Optional[Member] = Depends(get_current_member), db: Session = Depends(get_db)
+):
+    """Fuer Live-Polling: die volatilen Teile des Dashboards (Quorum, Anwesenheit,
+    Wahlgaenge, Vollmachten) als vorgerenderte HTML-Fragmente - dieselben Templates
+    wie beim normalen Seitenaufruf, damit nichts doppelt gepflegt werden muss."""
+    if member is None:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    assembly = db.get(Assembly, assembly_id)
+    if assembly is None:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+
+    context = _dashboard_context(db, assembly, member)
+    return JSONResponse(
+        {
+            "stats": templates.env.get_template("_live_stats.html").render(context),
+            "attendance_rows": templates.env.get_template("_live_attendance_rows.html").render(context),
+            "confirmed": templates.env.get_template("_live_confirmed.html").render(context),
+            "ballot_rows": templates.env.get_template("_live_ballot_rows.html").render(context),
+            "proxy_rows": templates.env.get_template("_live_proxy_rows.html").render(context),
+        }
+    )
+
+
 @router.post("/versammlungen/{assembly_id}/checkin")
 def checkin(
     assembly_id: int, member: Optional[Member] = Depends(get_current_member), db: Session = Depends(get_db)

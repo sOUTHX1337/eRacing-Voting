@@ -1,0 +1,18 @@
+{% if confirmed_attendances %}
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Bestätigt anwesend</th><th>Um</th><th></th></tr></thead>
+  <tbody>
+    {% for a in confirmed_attendances %}
+    <tr>
+      <td class="row-title">{{ a.member.name }}</td>
+      <td class="row-sub">{{ (a.confirmed_at or a.checked_in_at).strftime('%H:%M') }}</td>
+      <td>
+        <button type="button" class="btn-sm" onclick="if(confirm('Anwesenheit von {{ a.member.name|e }} zurücknehmen?')) removeAttendance({{ a.member_id }})">Entfernen</button>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}

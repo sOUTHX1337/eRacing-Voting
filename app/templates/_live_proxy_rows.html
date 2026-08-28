@@ -1,0 +1,19 @@
+{% for p in proxies %}
+<tr>
+  <td>{{ p.from_member.name }}</td>
+  <td>{{ p.to_member.name }}</td>
+  <td class="row-sub">{{ p.instruction or '—' }}</td>
+  <td>
+    {% if p.status.value == 'aktiv' %}<span class="status-pill neutral">Aktiv</span>
+    {% else %}<span class="status-pill outline">Erloschen</span>{% endif %}
+  </td>
+  <td>
+    <form class="inline" method="post" action="/versammlungen/{{ assembly.id }}/proxies/{{ p.id }}/entfernen"
+      onsubmit="return confirm('Vollmacht von „{{ p.from_member.name }}“ an „{{ p.to_member.name }}“ entfernen?');">
+      <button class="btn-sm red">Entfernen</button>
+    </form>
+  </td>
+</tr>
+{% else %}
+<tr><td colspan="5" class="row-sub">Noch keine Vollmachten erfasst.</td></tr>
+{% endfor %}

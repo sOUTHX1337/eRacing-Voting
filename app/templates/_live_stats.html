@@ -1,0 +1,18 @@
+<div class="stat-card">
+  <span class="lbl">Beschlussfähigkeit</span>
+  <div class="big">{{ quorum.total }} / {{ quorum.needed }}</div>
+  <div class="sub">
+    {% if quorum.required %}anwesend + vertreten &middot; benötigt 1/3 der {{ assembly.eligible_member_count }} aktiven Mitglieder
+    {% else %}Wiederholungsversammlung &middot; Quorum entfällt (Satzung §12 Abs. 2){% endif %}
+  </div>
+</div>
+<div class="stat-card">
+  <span class="lbl">Vollmachten</span>
+  <div class="big">{{ proxies|selectattr('status.value','equalto','aktiv')|list|length }}</div>
+  <div class="sub">aktiv &middot; max. 1 je Person</div>
+</div>
+<div class="stat-card">
+  <span class="lbl">Wahlgänge</span>
+  <div class="big">{{ ballots|selectattr('status.value','equalto','offen')|list|length }} / {{ ballots|length }}</div>
+  <div class="sub">offen von insgesamt {{ ballots|length }}</div>
+</div>

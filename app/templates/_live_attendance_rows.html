@@ -1,0 +1,21 @@
+{% for a in pending_attendances %}
+<tr>
+  <td><input type="checkbox" class="attendance-check" name="member_ids" value="{{ a.member_id }}" checked></td>
+  <td class="row-title">{{ a.member.name }}</td>
+  <td><span class="status-pill outline">Angefragt {{ a.checked_in_at.strftime('%H:%M') }}</span></td>
+  <td>
+    <button type="button" class="btn-sm red" onclick="removeAttendance({{ a.member_id }})">Ablehnen</button>
+  </td>
+</tr>
+{% endfor %}
+{% for m in not_checked_in_members %}
+<tr>
+  <td><input type="checkbox" class="attendance-check" name="member_ids" value="{{ m.id }}"></td>
+  <td class="row-title">{{ m.name }}</td>
+  <td><span class="status-pill outline">Nicht eingecheckt</span></td>
+  <td></td>
+</tr>
+{% endfor %}
+{% if not pending_attendances and not not_checked_in_members %}
+<tr><td colspan="4" class="row-sub">Alle aktiven Mitglieder sind bereits bestätigt.</td></tr>
+{% endif %}

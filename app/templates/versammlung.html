@@ -35,25 +35,8 @@
     {% endif %}
   </div>
 
-  <div class="stat-row">
-    <div class="stat-card">
-      <span class="lbl">Beschlussfähigkeit</span>
-      <div class="big">{{ quorum.total }} / {{ quorum.needed }}</div>
-      <div class="sub">
-        {% if quorum.required %}anwesend + vertreten &middot; benötigt 1/3 der {{ assembly.eligible_member_count }} aktiven Mitglieder
-        {% else %}Wiederholungsversammlung &middot; Quorum entfällt (Satzung §12 Abs. 2){% endif %}
-      </div>
-    </div>
-    <div class="stat-card">
-      <span class="lbl">Vollmachten</span>
-      <div class="big">{{ proxies|selectattr('status.value','equalto','aktiv')|list|length }}</div>
-      <div class="sub">aktiv &middot; max. 1 je Person</div>
-    </div>
-    <div class="stat-card">
-      <span class="lbl">Wahlgänge</span>
-      <div class="big">{{ ballots|selectattr('status.value','equalto','offen')|list|length }} / {{ ballots|length }}</div>
-      <div class="sub">offen von insgesamt {{ ballots|length }}</div>
-    </div>
+  <div class="stat-row" id="live-stats">
+    {% include "_live_stats.html" %}
   </div>
 
   {% if not member.is_wahlleitung and assembly.status.value == 'laufend' %}
@@ -88,28 +71,8 @@
           <th></th>
         </tr>
       </thead>
-      <tbody>
-        {% for a in pending_attendances %}
-        <tr>
-          <td><input type="checkbox" class="attendance-check" name="member_ids" value="{{ a.member_id }}" checked></td>
-          <td class="row-title">{{ a.member.name }}</td>
-          <td><span class="status-pill outline">Angefragt {{ a.checked_in_at.strftime('%H:%M') }}</span></td>
-          <td>
-            <button type="button" class="btn-sm red" onclick="removeAttendance({{ a.member_id }})">Ablehnen</button>
-          </td>
-        </tr>
-        {% endfor %}
-        {% for m in not_checked_in_members %}
-        <tr>
-          <td><input type="checkbox" class="attendance-check" name="member_ids" value="{{ m.id }}"></td>
-          <td class="row-title">{{ m.name }}</td>
-          <td><span class="status-pill outline">Nicht eingecheckt</span></td>
-          <td></td>
-        </tr>
-        {% endfor %}
-        {% if not pending_attendances and not not_checked_in_members %}
-        <tr><td colspan="4" class="row-sub">Alle aktiven Mitglieder sind bereits bestätigt.</td></tr>
-        {% endif %}
+      <tbody id="live-attendance-body">
+        {% include "_live_attendance_rows.html" %}
       </tbody>
     </table>
     </div>
@@ -118,24 +81,9 @@
       <p class="form-hint" style="margin-top:8px;">Angefragte sind vorausgewählt &ndash; „Nicht eingecheckt" zusätzlich anhaken, um sie ohne eigenes Gerät direkt mit einzuchecken.</p>
     </div>
     </form>
-    {% if confirmed_attendances %}
-    <div class="table-scroll">
-    <table>
-      <thead><tr><th>Bestätigt anwesend</th><th>Um</th><th></th></tr></thead>
-      <tbody>
-        {% for a in confirmed_attendances %}
-        <tr>
-          <td class="row-title">{{ a.member.name }}</td>
-          <td class="row-sub">{{ (a.confirmed_at or a.checked_in_at).strftime('%H:%M') }}</td>
-          <td>
-            <button type="button" class="btn-sm" onclick="if(confirm('Anwesenheit von {{ a.member.name|e }} zurücknehmen?')) removeAttendance({{ a.member_id }})">Entfernen</button>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div id="live-confirmed">
+      {% include "_live_confirmed.html" %}
     </div>
-    {% endif %}
   </div>
   <script>
     function toggleAllAttendance(source) {
@@ -159,38 +107,8 @@
     <div class="table-scroll">
     <table>
       <thead><tr><th>Titel</th><th>Typ</th><th>Modus</th><th>Mehrheit</th><th>Status</th><th></th></tr></thead>
-      <tbody>
-        {% for b in ballots %}
-        <tr>
-          <td><div class="row-title">{{ b.title }}</div></td>
-          <td>{{ 'Personenwahl' if b.kind.value == 'personenwahl' else 'Ja/Nein/Enth.' }}</td>
-          <td>{{ 'Geheim' if b.secret else 'Offen' }}</td>
-          <td>{{ b.majority_type.value }}</td>
-          <td>
-            {% if b.status.value == 'offen' %}<span class="status-pill alert">Offen</span>
-            {% elif b.status.value == 'geschlossen' %}<span class="status-pill neutral">Geschlossen</span>
-            {% else %}<span class="status-pill outline">Entwurf</span>{% endif %}
-          </td>
-          <td style="display:flex; gap:6px; white-space:nowrap;">
-            {% if b.status.value == 'geschlossen' %}
-              <a href="/wahlgaenge/{{ b.id }}/ergebnis" class="btn-sm">Ergebnis</a>
-            {% elif b.status.value == 'offen' %}
-              <a href="/wahlgaenge/{{ b.id }}/abstimmen" class="btn-sm">Abstimmen</a>
-              {% if member.is_wahlleitung %}<form class="inline" method="post" action="/wahlgaenge/{{ b.id }}/close"><button class="btn-sm red">Schließen</button></form>{% endif %}
-            {% elif member.is_wahlleitung %}
-              <form class="inline" method="post" action="/wahlgaenge/{{ b.id }}/open"><button class="btn-sm">Öffnen</button></form>
-            {% endif %}
-            {% if member.is_wahlleitung and b.status.value != 'offen' %}
-              <form class="inline" method="post" action="/wahlgaenge/{{ b.id }}/delete"
-                onsubmit="return confirm('Wahlgang „{{ b.title }}“ endgültig löschen? Das kann nicht rückgängig gemacht werden.');">
-                <button class="btn-sm red" title="Löschen">Löschen</button>
-              </form>
-            {% endif %}
-          </td>
-        </tr>
-        {% else %}
-        <tr><td colspan="6" class="row-sub">Noch keine Wahlgänge.</td></tr>
-        {% endfor %}
+      <tbody id="live-ballots-body">
+        {% include "_live_ballot_rows.html" %}
       </tbody>
     </table>
     </div>
@@ -202,26 +120,8 @@
     <div class="table-scroll">
     <table>
       <thead><tr><th>Übertragend</th><th>Empfangend</th><th>Weisung</th><th>Status</th><th></th></tr></thead>
-      <tbody>
-        {% for p in proxies %}
-        <tr>
-          <td>{{ p.from_member.name }}</td>
-          <td>{{ p.to_member.name }}</td>
-          <td class="row-sub">{{ p.instruction or '—' }}</td>
-          <td>
-            {% if p.status.value == 'aktiv' %}<span class="status-pill neutral">Aktiv</span>
-            {% else %}<span class="status-pill outline">Erloschen</span>{% endif %}
-          </td>
-          <td>
-            <form class="inline" method="post" action="/versammlungen/{{ assembly.id }}/proxies/{{ p.id }}/entfernen"
-              onsubmit="return confirm('Vollmacht von „{{ p.from_member.name }}“ an „{{ p.to_member.name }}“ entfernen?');">
-              <button class="btn-sm red">Entfernen</button>
-            </form>
-          </td>
-        </tr>
-        {% else %}
-        <tr><td colspan="5" class="row-sub">Noch keine Vollmachten erfasst.</td></tr>
-        {% endfor %}
+      <tbody id="live-proxies-body">
+        {% include "_live_proxy_rows.html" %}
       </tbody>
     </table>
     </div>
@@ -253,25 +153,61 @@
 
 </div>
 
-{% if assembly.status.value == 'laufend' %}
+{% if assembly.status.value != 'abgeschlossen' %}
 <script>
   (function () {
-    var seen = new Set([
+    var seenOpenBallots = new Set([
       {% for b in ballots %}{% if b.status.value == 'offen' %}{{ b.id }},{% endif %}{% endfor %}
     ]);
     var banner = document.getElementById('open-ballot-banner');
 
+    function notifyNewlyOpenBallots(open) {
+      open.forEach(function (b) {
+        if (seenOpenBallots.has(b.id)) return;
+        seenOpenBallots.add(b.id);
+        var box = document.createElement('div');
+        box.className = 'callout ok flash';
+        box.innerHTML = 'Wahlgang „' + b.title.replace(/</g, '&lt;') + '“ wurde soeben eröffnet – <a href="/wahlgaenge/' + b.id + '/abstimmen">jetzt abstimmen</a>.';
+        banner.appendChild(box);
+      });
+    }
+
+    // Checkbox-Auswahl im Anwesenheit-Formular ist Nutzereingabe - beim
+    // Aktualisieren der Zeilen bleibt sie erhalten, statt bei jedem Poll
+    // zurueckgesetzt zu werden.
+    function captureCheckboxState() {
+      var state = {};
+      document.querySelectorAll('.attendance-check').forEach(function (cb) {
+        state[cb.value] = cb.checked;
+      });
+      return state;
+    }
+    function restoreCheckboxState(state) {
+      document.querySelectorAll('.attendance-check').forEach(function (cb) {
+        if (Object.prototype.hasOwnProperty.call(state, cb.value)) {
+          cb.checked = state[cb.value];
+        }
+      });
+    }
+    function swap(id, html) {
+      var el = document.getElementById(id);
+      if (el && html !== undefined) el.innerHTML = html;
+    }
+
     function poll() {
       fetch('/versammlungen/{{ assembly.id }}/offene-wahlgaenge').then(function (r) { return r.json(); }).then(function (d) {
+        if (!d.error) notifyNewlyOpenBallots(d.open);
+      }).catch(function () {});
+
+      fetch('/versammlungen/{{ assembly.id }}/live').then(function (r) { return r.json(); }).then(function (d) {
         if (d.error) return;
-        d.open.forEach(function (b) {
-          if (seen.has(b.id)) return;
-          seen.add(b.id);
-          var box = document.createElement('div');
-          box.className = 'callout ok flash';
-          box.innerHTML = 'Wahlgang „' + b.title.replace(/</g, '&lt;') + '“ wurde soeben eröffnet – <a href="/wahlgaenge/' + b.id + '/abstimmen">jetzt abstimmen</a>.';
-          banner.appendChild(box);
-        });
+        var checkboxState = captureCheckboxState();
+        swap('live-stats', d.stats);
+        swap('live-attendance-body', d.attendance_rows);
+        swap('live-confirmed', d.confirmed);
+        swap('live-ballots-body', d.ballot_rows);
+        swap('live-proxies-body', d.proxy_rows);
+        restoreCheckboxState(checkboxState);
       }).catch(function () {});
     }
     setInterval(poll, 5000);
