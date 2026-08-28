@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
@@ -202,6 +202,23 @@ def confirm_attendance(
     if guard:
         return guard
     _confirm_attendance(db, assembly_id, member_id)
+    return RedirectResponse(f"/versammlungen/{assembly_id}", status_code=303)
+
+
+@router.post("/versammlungen/{assembly_id}/anwesenheit/bestaetigen-mehrere")
+def confirm_attendance_bulk(
+    assembly_id: int,
+    member_ids: List[int] = Form([]),
+    member: Optional[Member] = Depends(get_current_member),
+    db: Session = Depends(get_db),
+):
+    """Bestaetigt mehrere ausgewaehlte Mitglieder auf einmal - egal ob per
+    Self-Check-in angefragt oder noch gar nicht eingecheckt."""
+    guard = require_wahlleitung(member)
+    if guard:
+        return guard
+    for member_id in member_ids:
+        _confirm_attendance(db, assembly_id, member_id)
     return RedirectResponse(f"/versammlungen/{assembly_id}", status_code=303)
 
 

@@ -68,37 +68,46 @@
     <div class="panel-head"><h3>Anwesenheit bestätigen</h3></div>
     <div class="table-scroll">
     <table>
-      <thead><tr><th>Mitglied</th><th>Angefragt um</th><th></th></tr></thead>
+      <thead>
+        <tr>
+          <th><input type="checkbox" onclick="toggleAllAttendance(this)"></th>
+          <th>Mitglied</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
       <tbody>
         {% for a in pending_attendances %}
         <tr>
+          <td><input type="checkbox" class="attendance-check" value="{{ a.member_id }}" form="confirm-bulk-form" checked></td>
           <td class="row-title">{{ a.member.name }}</td>
-          <td class="row-sub">{{ a.checked_in_at.strftime('%H:%M') }}</td>
-          <td style="display:flex; gap:6px; white-space:nowrap;">
-            <form class="inline" method="post" action="/versammlungen/{{ assembly.id }}/anwesenheit/{{ a.member_id }}/bestaetigen">
-              <button class="btn-sm">Bestätigen</button>
-            </form>
+          <td><span class="status-pill outline">Angefragt {{ a.checked_in_at.strftime('%H:%M') }}</span></td>
+          <td>
             <form class="inline" method="post" action="/versammlungen/{{ assembly.id }}/anwesenheit/{{ a.member_id }}/entfernen">
               <button class="btn-sm red">Ablehnen</button>
             </form>
           </td>
         </tr>
-        {% else %}
-        <tr><td colspan="3" class="row-sub">Keine offenen Anfragen.</td></tr>
         {% endfor %}
+        {% for m in not_checked_in_members %}
+        <tr>
+          <td><input type="checkbox" class="attendance-check" value="{{ m.id }}" form="confirm-bulk-form"></td>
+          <td class="row-title">{{ m.name }}</td>
+          <td><span class="status-pill outline">Nicht eingecheckt</span></td>
+          <td></td>
+        </tr>
+        {% endfor %}
+        {% if not pending_attendances and not not_checked_in_members %}
+        <tr><td colspan="4" class="row-sub">Alle aktiven Mitglieder sind bereits bestätigt.</td></tr>
+        {% endif %}
       </tbody>
     </table>
     </div>
     <div class="panel-body" style="border-top:1px solid var(--border);">
-      <div style="display:flex; gap:10px; align-items:end; flex-wrap:wrap;">
-        <div class="form-group" style="margin-bottom:0; flex:1; min-width:200px;">
-          <label>Direkt einchecken (ohne eigenes Gerät)</label>
-          <select id="direct-checkin-select">
-            {% for m in not_checked_in_members %}<option value="{{ m.id }}">{{ m.name }}</option>{% endfor %}
-          </select>
-        </div>
-        <button type="button" class="btn btn-primary" onclick="submitDirectCheckin()">Einchecken &amp; bestätigen</button>
-      </div>
+      <form id="confirm-bulk-form" method="post" action="/versammlungen/{{ assembly.id }}/anwesenheit/bestaetigen-mehrere">
+        <button type="submit" class="btn btn-primary">Ausgewählte bestätigen</button>
+      </form>
+      <p class="form-hint" style="margin-top:8px;">Angefragte sind vorausgewählt &ndash; „Nicht eingecheckt" zusätzlich anhaken, um sie ohne eigenes Gerät direkt mit einzuchecken.</p>
     </div>
     {% if confirmed_attendances %}
     <div class="table-scroll">
@@ -123,14 +132,8 @@
     {% endif %}
   </div>
   <script>
-    function submitDirectCheckin() {
-      const sel = document.getElementById('direct-checkin-select');
-      if (!sel.value) return;
-      const form = document.createElement('form');
-      form.method = 'post';
-      form.action = '/versammlungen/{{ assembly.id }}/anwesenheit/' + sel.value + '/bestaetigen';
-      document.body.appendChild(form);
-      form.submit();
+    function toggleAllAttendance(source) {
+      document.querySelectorAll('.attendance-check').forEach(function (cb) { cb.checked = source.checked; });
     }
   </script>
   {% endif %}
