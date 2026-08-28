@@ -201,7 +201,7 @@
     <div class="panel-head"><h3>Vollmachten</h3></div>
     <div class="table-scroll">
     <table>
-      <thead><tr><th>Übertragend</th><th>Empfangend</th><th>Weisung</th><th>Status</th></tr></thead>
+      <thead><tr><th>Übertragend</th><th>Empfangend</th><th>Weisung</th><th>Status</th><th></th></tr></thead>
       <tbody>
         {% for p in proxies %}
         <tr>
@@ -212,9 +212,15 @@
             {% if p.status.value == 'aktiv' %}<span class="status-pill neutral">Aktiv</span>
             {% else %}<span class="status-pill outline">Erloschen</span>{% endif %}
           </td>
+          <td>
+            <form class="inline" method="post" action="/versammlungen/{{ assembly.id }}/proxies/{{ p.id }}/entfernen"
+              onsubmit="return confirm('Vollmacht von „{{ p.from_member.name }}“ an „{{ p.to_member.name }}“ entfernen?');">
+              <button class="btn-sm red">Entfernen</button>
+            </form>
+          </td>
         </tr>
         {% else %}
-        <tr><td colspan="4" class="row-sub">Noch keine Vollmachten erfasst.</td></tr>
+        <tr><td colspan="5" class="row-sub">Noch keine Vollmachten erfasst.</td></tr>
         {% endfor %}
       </tbody>
     </table>

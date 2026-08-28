@@ -16,9 +16,11 @@ from ..models import (
     BallotStatus,
     Member,
     MemberStatus,
+    Participation,
     Proxy,
     ProxyStatus,
     Attendance,
+    VoteSlot,
 )
 from ..services.quorum import compute_quorum
 
@@ -94,19 +96,7 @@ def create_assembly(
     return RedirectResponse(f"/versammlungen/{assembly.id}", status_code=303)
 
 
-@router.get("/versammlungen/{assembly_id}")
-def assembly_dashboard(
-    assembly_id: int,
-    request: Request,
-    member: Optional[Member] = Depends(get_current_member),
-    db: Session = Depends(get_db),
-):
-    if member is None:
-        return RedirectResponse("/login", status_code=303)
-    assembly = db.get(Assembly, assembly_id)
-    if assembly is None:
-        return RedirectResponse("/", status_code=303)
-
+def _dashboard_context(db: Session, assembly: Assembly, member: Member, flash: Optional[str] = None) -> dict:
     ballots = db.query(Ballot).filter(Ballot.assembly_id == assembly.id).order_by(Ballot.created_at).all()
     proxies = db.query(Proxy).filter(Proxy.assembly_id == assembly.id).order_by(Proxy.created_at).all()
     active_members = (
@@ -136,23 +126,37 @@ def assembly_dashboard(
     else:
         own_attendance_status = "pending"
 
-    return templates.TemplateResponse(
-        "versammlung.html",
-        {
-            "request": request,
-            "member": member,
-            "assembly": assembly,
-            "ballots": ballots,
-            "proxies": proxies,
-            "active_members": active_members,
-            "quorum": quorum,
-            "pending_attendances": pending_attendances,
-            "confirmed_attendances": confirmed_attendances,
-            "not_checked_in_members": not_checked_in_members,
-            "own_attendance_status": own_attendance_status,
-            "flash": None,
-        },
-    )
+    return {
+        "member": member,
+        "assembly": assembly,
+        "ballots": ballots,
+        "proxies": proxies,
+        "active_members": active_members,
+        "quorum": quorum,
+        "pending_attendances": pending_attendances,
+        "confirmed_attendances": confirmed_attendances,
+        "not_checked_in_members": not_checked_in_members,
+        "own_attendance_status": own_attendance_status,
+        "flash": flash,
+    }
+
+
+@router.get("/versammlungen/{assembly_id}")
+def assembly_dashboard(
+    assembly_id: int,
+    request: Request,
+    member: Optional[Member] = Depends(get_current_member),
+    db: Session = Depends(get_db),
+):
+    if member is None:
+        return RedirectResponse("/login", status_code=303)
+    assembly = db.get(Assembly, assembly_id)
+    if assembly is None:
+        return RedirectResponse("/", status_code=303)
+
+    context = _dashboard_context(db, assembly, member)
+    context["request"] = request
+    return templates.TemplateResponse("versammlung.html", context)
 
 
 @router.post("/versammlungen/{assembly_id}/start")
@@ -352,4 +356,62 @@ def create_proxy(
             )
             db.commit()
 
+    return RedirectResponse(f"/versammlungen/{assembly_id}", status_code=303)
+
+
+def _proxy_used(db: Session, proxy: Proxy) -> bool:
+    """Ob mit dieser Vollmacht bereits per Vollmacht-Slot abgestimmt wurde - ein
+    Loeschen wuerde dann die Begruendung fuer eine bereits abgegebene Stimme aus
+    dem Protokoll entfernen und ist deshalb gesperrt."""
+    return (
+        db.query(Participation)
+        .join(Ballot, Ballot.id == Participation.ballot_id)
+        .filter(
+            Ballot.assembly_id == proxy.assembly_id,
+            Participation.member_id == proxy.to_member_id,
+            Participation.slot == VoteSlot.vollmacht,
+        )
+        .first()
+        is not None
+    )
+
+
+@router.post("/versammlungen/{assembly_id}/proxies/{proxy_id}/entfernen")
+def remove_proxy(
+    assembly_id: int,
+    proxy_id: int,
+    request: Request,
+    member: Optional[Member] = Depends(get_current_member),
+    db: Session = Depends(get_db),
+):
+    """Erfasste Vollmacht wieder loeschen (z.B. Falscheingabe) - anders als das
+    automatische Erloeschen bei eigener Anwesenheit (§11 Abs. 7) entfernt das den
+    Datensatz vollstaendig. Nur solange damit noch nicht abgestimmt wurde -
+    sonst wuerde die Begruendung fuer eine bereits abgegebene Stimme verschwinden."""
+    guard = require_wahlleitung(member)
+    if guard:
+        return guard
+    assembly = db.get(Assembly, assembly_id)
+    if assembly is None:
+        return RedirectResponse("/", status_code=303)
+
+    proxy = db.get(Proxy, proxy_id)
+    if proxy is None or proxy.assembly_id != assembly_id:
+        return RedirectResponse(f"/versammlungen/{assembly_id}", status_code=303)
+
+    if _proxy_used(db, proxy):
+        context = _dashboard_context(
+            db,
+            assembly,
+            member,
+            flash=(
+                f"Vollmacht von „{proxy.from_member.name}“ an „{proxy.to_member.name}“ kann nicht entfernt "
+                "werden - damit wurde bereits abgestimmt."
+            ),
+        )
+        context["request"] = request
+        return templates.TemplateResponse("versammlung.html", context)
+
+    db.delete(proxy)
+    db.commit()
     return RedirectResponse(f"/versammlungen/{assembly_id}", status_code=303)
