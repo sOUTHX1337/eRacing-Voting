@@ -24,6 +24,40 @@
   <div class="callout ok flash">{{ import_summary }}</div>
   {% endif %}
 
+  {% if merge_summary is defined and merge_summary %}
+  <div class="callout ok flash">{{ merge_summary }}</div>
+  {% endif %}
+
+  {% if duplicate_groups is defined and duplicate_groups %}
+  <div class="panel">
+    <div class="panel-head"><h3>Mögliche Duplikate</h3></div>
+    <div class="panel-body">
+      <p class="form-hint" style="margin:0 0 16px;">
+        Diese Namen tauchen mehrfach auf &ndash; meist weil ein Login mit anderer Groß-/Kleinschreibung oder
+        ein CSV-Import einen abweichenden Benutzernamen erzeugt hat. „Behalten" auswählen und
+        zusammenführen &ndash; Anwesenheiten, Vollmachten und Stimmen der anderen wandern automatisch zum
+        behaltenen Datensatz, der Rest wird gelöscht.
+      </p>
+      {% for group in duplicate_groups %}
+      <form method="post" action="/admin/mitglieder/zusammenfuehren" style="margin-bottom:16px; padding-bottom:16px; border-bottom:1px solid var(--border);">
+        {% for m in group %}
+        <input type="hidden" name="candidate_ids" value="{{ m.id }}">
+        <label style="display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:14.5px;">
+          <input type="radio" name="keep_id" value="{{ m.id }}" {% if loop.first %}checked{% endif %}>
+          <span class="row-title">{{ m.name }}</span>
+          <span class="row-sub">{{ m.ldap_uid }} &middot; {{ m.status.value }}{% if m.is_wahlleitung %} &middot; Wahlleitung{% endif %}</span>
+        </label>
+        {% endfor %}
+        <button type="submit" class="btn-sm red" style="margin-top:6px;"
+          onclick="return confirm('Ausgewählte(n) Datensatz behalten, den/die anderen hineinführen und löschen? Das kann nicht rückgängig gemacht werden.');">
+          Zusammenführen
+        </button>
+      </form>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
   <div class="panel">
     <div class="panel-head"><h3>Mitglieder</h3></div>
     <div class="table-scroll">

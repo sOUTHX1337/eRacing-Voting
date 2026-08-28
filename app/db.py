@@ -44,8 +44,38 @@ def _add_missing_columns() -> None:
                 conn.execute(text("ALTER TABLE attendances ADD COLUMN confirmed_at DATETIME"))
 
 
+def _normalize_existing_uids() -> None:
+    """Case-Normalisierung fuer bestehende ldap_uid-Werte.
+
+    Ohne das wuerde ein Login mit anderer Gross-/Kleinschreibung als beim letzten
+    Mal (z.B. weil ein Datensatz frueher per CSV-Import mit geratenem, kleingeschriebenem
+    Benutzernamen angelegt wurde) bei jedem erneuten Login einen weiteren Duplikat-
+    Datensatz erzeugen, obwohl der eigentliche Bugfix (normalize_uid ueberall) das
+    fuer NEUE Datensaetze schon verhindert. Kollidiert die Normalisierung zweier
+    bestehender Datensaetze (= ein echtes Duplikat mit unterschiedlicher Schreibweise),
+    wird nichts automatisch zusammengefuehrt - das faengt die manuelle
+    Duplikat-Erkennung unter /admin/mitglieder ab.
+    """
+    from .models import Member
+
+    with SessionLocal() as db:
+        members = db.query(Member).all()
+        by_normalized: dict = {}
+        for m in members:
+            by_normalized.setdefault(m.ldap_uid.strip().lower(), []).append(m)
+
+        changed = False
+        for normalized, group in by_normalized.items():
+            if len(group) == 1 and group[0].ldap_uid != normalized:
+                group[0].ldap_uid = normalized
+                changed = True
+        if changed:
+            db.commit()
+
+
 def init_db() -> None:
     from . import models  # noqa: F401  (registers models on Base)
 
     Base.metadata.create_all(bind=engine)
     _add_missing_columns()
+    _normalize_existing_uids()

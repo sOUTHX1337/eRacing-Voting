@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Archiv{% endblock %}
+{% block header_meta %}Archiv{% endblock %}
+{% block content %}
+<div class="content">
+  <div class="panel">
+    <div class="panel-head"><h3>Abgeschlossene Versammlungen</h3></div>
+    <div class="table-scroll">
+    <table>
+      <thead><tr><th>Titel</th><th>Datum</th><th>Typ</th><th></th></tr></thead>
+      <tbody>
+        {% for a in assemblies %}
+        <tr>
+          <td class="row-title">{{ a.title }}</td>
+          <td>{{ a.date.strftime('%d.%m.%Y') }}</td>
+          <td>{{ a.type.value }}</td>
+          <td><a href="/versammlungen/{{ a.id }}" class="btn-sm">Öffnen</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="row-sub">Noch keine abgeschlossene Versammlung.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+  <p class="form-hint" style="max-width:64ch;">
+    Protokolle, Anwesenheit, Vollmachten und Ergebnisse bleiben hier dauerhaft einsehbar
+    (Satzung §12 Abs. 4). Laufende und geplante Versammlungen stehen auf der <a href="/">Übersicht</a>.
+  </p>
+</div>
+{% endblock %}

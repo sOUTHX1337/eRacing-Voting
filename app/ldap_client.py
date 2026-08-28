@@ -6,6 +6,7 @@ from ldap3.core.exceptions import LDAPBindError, LDAPException, LDAPSocketOpenEr
 from ldap3.utils.conv import escape_filter_chars
 
 from .dev_users import DEV_USERS
+from .utils import normalize_uid
 
 
 @dataclass
@@ -56,11 +57,11 @@ def authenticate(username: str, password: str, settings: Dict) -> Optional[LdapU
 
 
 def _authenticate_dev(username: str, password: str) -> Optional[LdapUser]:
-    user = DEV_USERS.get(username.strip().lower())
+    user = DEV_USERS.get(normalize_uid(username))
     if not user or user["password"] != password:
         return None
     return LdapUser(
-        uid=username.strip().lower(),
+        uid=normalize_uid(username),
         name=user["name"],
         email=user["email"],
         is_active_member=user["status"] == "aktiv",
@@ -100,7 +101,11 @@ def _authenticate_ldap(username: str, password: str, settings: Dict) -> Optional
         conn.unbind()
 
     return LdapUser(
-        uid=username, name=name, email=email, is_active_member=is_active_member, is_wahlleitung=is_wahlleitung
+        uid=normalize_uid(username),
+        name=name,
+        email=email,
+        is_active_member=is_active_member,
+        is_wahlleitung=is_wahlleitung,
     )
 
 
@@ -192,10 +197,11 @@ def test_connection(username: str, password: str, settings: Dict) -> LdapTestRes
 def _entries_to_members(entries, attr_uid: str, attr_name: str, attr_email: str) -> List[Dict[str, Optional[str]]]:
     members = []
     for entry in entries:
-        uid = str(getattr(entry, attr_uid, "")).strip()
-        if not uid:
+        raw_uid = str(getattr(entry, attr_uid, "")).strip()
+        if not raw_uid:
             continue
-        name = str(getattr(entry, attr_name, uid)) or uid
+        uid = normalize_uid(raw_uid)
+        name = str(getattr(entry, attr_name, raw_uid)) or raw_uid
         email = str(getattr(entry, attr_email, "")) or None
         members.append({"uid": uid, "name": name, "email": email})
     return members

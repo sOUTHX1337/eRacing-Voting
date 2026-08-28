@@ -6,6 +6,8 @@
 
   {% if flash %}<div class="callout flash">{{ flash }}</div>{% endif %}
 
+  <div id="open-ballot-banner"></div>
+
   <div class="panel-head" style="padding:0; margin-bottom:20px; border:none;">
     <h3 style="font-size:15px;">
       {% if assembly.status.value == 'laufend' %}<span class="status-pill alert">Läuft</span>
@@ -13,13 +15,22 @@
       {% else %}<span class="status-pill outline">Vorbereitung</span>{% endif %}
     </h3>
     {% if member.is_wahlleitung %}
-    <div style="display:flex; gap:8px;">
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
       {% if assembly.status.value == 'vorbereitung' %}
       <form method="post" action="/versammlungen/{{ assembly.id }}/start"><button class="btn btn-primary">Versammlung starten</button></form>
       {% elif assembly.status.value == 'laufend' %}
       <form method="post" action="/versammlungen/{{ assembly.id }}/close"><button class="btn btn-ghost">Versammlung abschließen</button></form>
       {% endif %}
       <a href="/versammlungen/{{ assembly.id }}/export" class="btn-sm">Export</a>
+      <form method="post" action="/versammlungen/{{ assembly.id }}/status" style="display:flex; gap:6px;"
+        onsubmit="return confirm('Status wirklich manuell auf \'' + this.status.options[this.status.selectedIndex].text + '\' setzen? Das ist eine nachträgliche Korrektur und ändert nichts an bereits erfassten Anwesenheiten/Stimmen.');">
+        <select name="status" style="min-width:0;">
+          <option value="vorbereitung" {% if assembly.status.value == 'vorbereitung' %}selected{% endif %}>Vorbereitung</option>
+          <option value="laufend" {% if assembly.status.value == 'laufend' %}selected{% endif %}>Läuft</option>
+          <option value="abgeschlossen" {% if assembly.status.value == 'abgeschlossen' %}selected{% endif %}>Abgeschlossen</option>
+        </select>
+        <button type="submit" class="btn-sm" title="Status nachträglich korrigieren">Status ändern</button>
+      </form>
     </div>
     {% endif %}
   </div>
@@ -235,4 +246,30 @@
   {% endif %}
 
 </div>
+
+{% if assembly.status.value == 'laufend' %}
+<script>
+  (function () {
+    var seen = new Set([
+      {% for b in ballots %}{% if b.status.value == 'offen' %}{{ b.id }},{% endif %}{% endfor %}
+    ]);
+    var banner = document.getElementById('open-ballot-banner');
+
+    function poll() {
+      fetch('/versammlungen/{{ assembly.id }}/offene-wahlgaenge').then(function (r) { return r.json(); }).then(function (d) {
+        if (d.error) return;
+        d.open.forEach(function (b) {
+          if (seen.has(b.id)) return;
+          seen.add(b.id);
+          var box = document.createElement('div');
+          box.className = 'callout ok flash';
+          box.innerHTML = 'Wahlgang „' + b.title.replace(/</g, '&lt;') + '“ wurde soeben eröffnet – <a href="/wahlgaenge/' + b.id + '/abstimmen">jetzt abstimmen</a>.';
+          banner.appendChild(box);
+        });
+      }).catch(function () {});
+    }
+    setInterval(poll, 5000);
+  })();
+</script>
+{% endif %}
 {% endblock %}

@@ -2,13 +2,24 @@ from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..deps import get_current_member, require_wahlleitung
-from ..models import Assembly, AssemblyStatus, AssemblyType, Ballot, Member, MemberStatus, Proxy, ProxyStatus, Attendance
+from ..models import (
+    Assembly,
+    AssemblyStatus,
+    AssemblyType,
+    Ballot,
+    BallotStatus,
+    Member,
+    MemberStatus,
+    Proxy,
+    ProxyStatus,
+    Attendance,
+)
 from ..services.quorum import compute_quorum
 
 router = APIRouter()
@@ -20,15 +31,40 @@ def index(request: Request, member: Optional[Member] = Depends(get_current_membe
     if member is None:
         return RedirectResponse("/login", status_code=303)
 
-    assemblies = db.query(Assembly).order_by(Assembly.date.desc()).all()
+    all_assemblies = db.query(Assembly).order_by(Assembly.date.desc()).all()
 
     if not member.is_wahlleitung:
-        laufend = next((a for a in assemblies if a.status == AssemblyStatus.laufend), None)
+        laufend = next((a for a in all_assemblies if a.status == AssemblyStatus.laufend), None)
         if laufend:
             return RedirectResponse(f"/versammlungen/{laufend.id}", status_code=303)
 
+    # Abgeschlossene Versammlungen wandern ins Archiv, damit die Übersicht nicht zuwaechst
+    current_assemblies = [a for a in all_assemblies if a.status != AssemblyStatus.abgeschlossen]
+
     return templates.TemplateResponse(
-        "index.html", {"request": request, "member": member, "assemblies": assemblies, "flash": None}
+        "index.html",
+        {
+            "request": request,
+            "member": member,
+            "assemblies": current_assemblies,
+            "all_assemblies": all_assemblies,
+            "flash": None,
+        },
+    )
+
+
+@router.get("/archiv")
+def archive(request: Request, member: Optional[Member] = Depends(get_current_member), db: Session = Depends(get_db)):
+    if member is None:
+        return RedirectResponse("/login", status_code=303)
+    assemblies = (
+        db.query(Assembly)
+        .filter(Assembly.status == AssemblyStatus.abgeschlossen)
+        .order_by(Assembly.date.desc())
+        .all()
+    )
+    return templates.TemplateResponse(
+        "archiv.html", {"request": request, "member": member, "assemblies": assemblies}
     )
 
 
@@ -146,6 +182,47 @@ def close_assembly(
         assembly.status = AssemblyStatus.abgeschlossen
         db.commit()
     return RedirectResponse(f"/versammlungen/{assembly_id}", status_code=303)
+
+
+@router.post("/versammlungen/{assembly_id}/status")
+def change_status(
+    assembly_id: int,
+    status: str = Form(...),
+    member: Optional[Member] = Depends(get_current_member),
+    db: Session = Depends(get_db),
+):
+    """Nachtraegliche Korrektur des Status (z.B. eine versehentlich abgeschlossene
+    Versammlung wieder oeffnen) - im Unterschied zu /start ruehrt das den
+    eligible_member_count-Schnappschuss nicht an."""
+    guard = require_wahlleitung(member)
+    if guard:
+        return guard
+    assembly = db.get(Assembly, assembly_id)
+    if assembly is None:
+        return RedirectResponse("/", status_code=303)
+    try:
+        assembly.status = AssemblyStatus(status)
+    except ValueError:
+        pass
+    else:
+        db.commit()
+    return RedirectResponse(f"/versammlungen/{assembly_id}", status_code=303)
+
+
+@router.get("/versammlungen/{assembly_id}/offene-wahlgaenge")
+def open_ballots_status(
+    assembly_id: int, member: Optional[Member] = Depends(get_current_member), db: Session = Depends(get_db)
+):
+    """Fuer Live-Polling: welche Wahlgaenge sind gerade offen - fuer den
+    Hinweis-Banner, wenn ein neuer Wahlgang eroeffnet wird."""
+    if member is None:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    ballots = (
+        db.query(Ballot)
+        .filter(Ballot.assembly_id == assembly_id, Ballot.status == BallotStatus.offen)
+        .all()
+    )
+    return JSONResponse({"open": [{"id": b.id, "title": b.title} for b in ballots]})
 
 
 @router.post("/versammlungen/{assembly_id}/checkin")

@@ -15,6 +15,7 @@
     <div class="spacer"></div>
     <div class="who">
       {{ member.name }}{% if member.is_wahlleitung %} · Wahlleitung{% endif %}
+      · <a href="/archiv">Archiv</a>
       {% if member.is_wahlleitung %} · <a href="/admin/mitglieder">Mitglieder</a> · <a href="/admin/einstellungen">Einstellungen</a>{% endif %}
       · <a href="/logout">Abmelden</a>
     </div>

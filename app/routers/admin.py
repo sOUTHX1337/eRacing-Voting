@@ -14,6 +14,7 @@ from .. import ldap_client, settings as settings_service
 from ..db import get_db
 from ..deps import get_current_member, require_wahlleitung
 from ..models import Attendance, Member, MemberStatus, Participation, Proxy, Vote
+from ..utils import normalize_uid
 from .auth import ADMIN_LDAP_UID
 
 router = APIRouter()
@@ -35,9 +36,8 @@ def _guess_ldap_uid(vorname: str, nachname: str) -> str:
     first_token = vorname.split()[0] if vorname.split() else vorname
     first = _normalize_name_part(first_token)
     last = _normalize_name_part(nachname)
-    if first and last:
-        return f"{first}.{last}"
-    return first or last
+    guess = f"{first}.{last}" if first and last else (first or last)
+    return normalize_uid(guess)
 
 
 def _member_has_history(db: Session, member_id: int) -> bool:
@@ -53,6 +53,84 @@ def _member_has_history(db: Session, member_id: int) -> bool:
     return False
 
 
+def _find_duplicate_groups(members: List[Member]) -> List[List[Member]]:
+    """Gruppiert Mitglieder mit (fast) identischem Namen - Kandidaten fuer Zusammenfuehren."""
+    groups: dict = {}
+    for m in members:
+        key = re.sub(r"\s+", " ", m.name.strip().lower())
+        groups.setdefault(key, []).append(m)
+    return [g for g in groups.values() if len(g) > 1]
+
+
+def _merge_member(db: Session, keep_id: int, remove_id: int) -> None:
+    """Fuehrt remove_id in keep_id zusammen: alle Verweise (Anwesenheit, Vollmacht,
+    Teilnahme, Stimme) wandern zum Behalten-Datensatz, remove_id wird geloescht.
+    Bei Konflikten mit Unique-Constraints (z.B. beide hatten fuer dieselbe
+    Versammlung schon eine Anwesenheit) wird der redundante Eintrag von remove_id
+    verworfen statt die Zusammenfuehrung abzubrechen."""
+    if keep_id == remove_id:
+        return
+    keep = db.get(Member, keep_id)
+    remove = db.get(Member, remove_id)
+    if keep is None or remove is None:
+        return
+
+    for att in db.query(Attendance).filter(Attendance.member_id == remove_id).all():
+        conflict = (
+            db.query(Attendance)
+            .filter(Attendance.assembly_id == att.assembly_id, Attendance.member_id == keep_id)
+            .one_or_none()
+        )
+        if conflict is None:
+            att.member_id = keep_id
+        else:
+            if att.confirmed and not conflict.confirmed:
+                conflict.confirmed = True
+                conflict.confirmed_at = att.confirmed_at
+            db.delete(att)
+
+    db.query(Proxy).filter(Proxy.from_member_id == remove_id).update({Proxy.from_member_id: keep_id})
+    db.query(Proxy).filter(Proxy.recorded_by_id == remove_id).update({Proxy.recorded_by_id: keep_id})
+    for p in db.query(Proxy).filter(Proxy.to_member_id == remove_id).all():
+        conflict = (
+            db.query(Proxy)
+            .filter(Proxy.assembly_id == p.assembly_id, Proxy.to_member_id == keep_id)
+            .one_or_none()
+        )
+        if conflict is None:
+            p.to_member_id = keep_id
+        else:
+            db.delete(p)
+
+    for part in db.query(Participation).filter(Participation.member_id == remove_id).all():
+        conflict = (
+            db.query(Participation)
+            .filter(
+                Participation.ballot_id == part.ballot_id,
+                Participation.member_id == keep_id,
+                Participation.slot == part.slot,
+            )
+            .one_or_none()
+        )
+        if conflict is None:
+            part.member_id = keep_id
+        else:
+            db.delete(part)
+
+    db.query(Vote).filter(Vote.member_id == remove_id).update({Vote.member_id: keep_id})
+
+    # Rechte/Status konservativ zusammenfuehren - eine Zusammenfuehrung darf nie
+    # stillschweigend Stimmrecht oder Wahlleitungs-Zugriff verlieren lassen.
+    if remove.status == MemberStatus.aktiv:
+        keep.status = MemberStatus.aktiv
+    keep.is_wahlleitung = keep.is_wahlleitung or remove.is_wahlleitung
+    if not keep.email and remove.email:
+        keep.email = remove.email
+
+    db.delete(remove)
+    db.commit()
+
+
 @router.get("/admin/mitglieder")
 def members_admin(
     request: Request,
@@ -63,8 +141,51 @@ def members_admin(
     if guard:
         return guard
     members = db.query(Member).order_by(Member.name).all()
+    duplicate_groups = _find_duplicate_groups(members)
     return templates.TemplateResponse(
-        "admin_members.html", {"request": request, "member": member, "members": members}
+        "admin_members.html",
+        {"request": request, "member": member, "members": members, "duplicate_groups": duplicate_groups},
+    )
+
+
+@router.post("/admin/mitglieder/zusammenfuehren")
+def merge_members(
+    request: Request,
+    keep_id: int = Form(...),
+    candidate_ids: List[int] = Form(...),
+    member: Optional[Member] = Depends(get_current_member),
+    db: Session = Depends(get_db),
+):
+    guard = require_wahlleitung(member)
+    if guard:
+        return guard
+
+    merge_summary = None
+    keep = db.get(Member, keep_id)
+    if keep is not None:
+        merged_names = []
+        for cid in candidate_ids:
+            if cid == keep_id:
+                continue
+            other = db.get(Member, cid)
+            if other is None:
+                continue
+            merged_names.append(other.name)
+            _merge_member(db, keep_id, cid)
+        if merged_names:
+            merge_summary = f"{', '.join(merged_names)} zusammengeführt in „{keep.name}“."
+
+    members = db.query(Member).order_by(Member.name).all()
+    duplicate_groups = _find_duplicate_groups(members)
+    return templates.TemplateResponse(
+        "admin_members.html",
+        {
+            "request": request,
+            "member": member,
+            "members": members,
+            "duplicate_groups": duplicate_groups,
+            "merge_summary": merge_summary,
+        },
     )
 
 
@@ -233,7 +354,7 @@ def import_members(
     imported = 0
     for raw in candidates:
         parts = raw.split("|", 2)
-        uid = parts[0].strip() if parts else ""
+        uid = normalize_uid(parts[0]) if parts else ""
         if not uid:
             continue
         name = parts[1].strip() if len(parts) > 1 and parts[1].strip() else uid
@@ -360,7 +481,7 @@ async def csv_import(
 
     imported = skipped = 0
     for idx in selected:
-        uid = (form.get(f"uid_{idx}") or "").strip().lower()
+        uid = normalize_uid(form.get(f"uid_{idx}") or "")
         name = (form.get(f"name_{idx}") or "").strip()
         email = (form.get(f"email_{idx}") or "").strip() or None
         if not uid or not name:
