@@ -66,6 +66,7 @@
   {% if member.is_wahlleitung %}
   <div class="panel">
     <div class="panel-head"><h3>Anwesenheit bestätigen</h3></div>
+    <form id="confirm-bulk-form" method="post" action="/versammlungen/{{ assembly.id }}/anwesenheit/bestaetigen-mehrere">
     <div class="table-scroll">
     <table>
       <thead>
@@ -79,19 +80,17 @@
       <tbody>
         {% for a in pending_attendances %}
         <tr>
-          <td><input type="checkbox" class="attendance-check" value="{{ a.member_id }}" form="confirm-bulk-form" checked></td>
+          <td><input type="checkbox" class="attendance-check" name="member_ids" value="{{ a.member_id }}" checked></td>
           <td class="row-title">{{ a.member.name }}</td>
           <td><span class="status-pill outline">Angefragt {{ a.checked_in_at.strftime('%H:%M') }}</span></td>
           <td>
-            <form class="inline" method="post" action="/versammlungen/{{ assembly.id }}/anwesenheit/{{ a.member_id }}/entfernen">
-              <button class="btn-sm red">Ablehnen</button>
-            </form>
+            <button type="button" class="btn-sm red" onclick="removeAttendance({{ a.member_id }})">Ablehnen</button>
           </td>
         </tr>
         {% endfor %}
         {% for m in not_checked_in_members %}
         <tr>
-          <td><input type="checkbox" class="attendance-check" value="{{ m.id }}" form="confirm-bulk-form"></td>
+          <td><input type="checkbox" class="attendance-check" name="member_ids" value="{{ m.id }}"></td>
           <td class="row-title">{{ m.name }}</td>
           <td><span class="status-pill outline">Nicht eingecheckt</span></td>
           <td></td>
@@ -104,11 +103,10 @@
     </table>
     </div>
     <div class="panel-body" style="border-top:1px solid var(--border);">
-      <form id="confirm-bulk-form" method="post" action="/versammlungen/{{ assembly.id }}/anwesenheit/bestaetigen-mehrere">
-        <button type="submit" class="btn btn-primary">Ausgewählte bestätigen</button>
-      </form>
+      <button type="submit" class="btn btn-primary">Ausgewählte bestätigen</button>
       <p class="form-hint" style="margin-top:8px;">Angefragte sind vorausgewählt &ndash; „Nicht eingecheckt" zusätzlich anhaken, um sie ohne eigenes Gerät direkt mit einzuchecken.</p>
     </div>
+    </form>
     {% if confirmed_attendances %}
     <div class="table-scroll">
     <table>
@@ -119,10 +117,7 @@
           <td class="row-title">{{ a.member.name }}</td>
           <td class="row-sub">{{ (a.confirmed_at or a.checked_in_at).strftime('%H:%M') }}</td>
           <td>
-            <form class="inline" method="post" action="/versammlungen/{{ assembly.id }}/anwesenheit/{{ a.member_id }}/entfernen"
-              onsubmit="return confirm('Anwesenheit von {{ a.member.name }} zurücknehmen?');">
-              <button class="btn-sm">Entfernen</button>
-            </form>
+            <button type="button" class="btn-sm" onclick="if(confirm('Anwesenheit von {{ a.member.name|e }} zurücknehmen?')) removeAttendance({{ a.member_id }})">Entfernen</button>
           </td>
         </tr>
         {% endfor %}
@@ -134,6 +129,13 @@
   <script>
     function toggleAllAttendance(source) {
       document.querySelectorAll('.attendance-check').forEach(function (cb) { cb.checked = source.checked; });
+    }
+    function removeAttendance(memberId) {
+      const form = document.createElement('form');
+      form.method = 'post';
+      form.action = '/versammlungen/{{ assembly.id }}/anwesenheit/' + memberId + '/entfernen';
+      document.body.appendChild(form);
+      form.submit();
     }
   </script>
   {% endif %}
