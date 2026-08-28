@@ -23,6 +23,7 @@ from ..models import (
     VoteSlot,
 )
 from ..services.quorum import compute_quorum
+from .auth import ADMIN_LDAP_UID
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -168,7 +169,14 @@ def start_assembly(
         return guard
     assembly = db.get(Assembly, assembly_id)
     if assembly and assembly.status == AssemblyStatus.vorbereitung:
-        assembly.eligible_member_count = db.query(Member).filter(Member.status == MemberStatus.aktiv).count()
+        # Nur echte, aus LDAP stammende Mitglieder zaehlen fuer die Beschlussfaehigkeit -
+        # der Notfall-Admin-Account (ADMIN_LDAP_UID) ist kein reales Vereinsmitglied
+        # und darf die Basis fuer das Quorum nicht verfaelschen.
+        assembly.eligible_member_count = (
+            db.query(Member)
+            .filter(Member.status == MemberStatus.aktiv, Member.ldap_uid != ADMIN_LDAP_UID)
+            .count()
+        )
         assembly.status = AssemblyStatus.laufend
         db.commit()
     return RedirectResponse(f"/versammlungen/{assembly_id}", status_code=303)
