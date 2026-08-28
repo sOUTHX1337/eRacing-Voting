@@ -1,0 +1,16 @@
+{% if open_ballots %}
+<div class="panel" style="border-color:var(--red);">
+  <div class="panel-head"><h3>Jetzt abstimmen</h3></div>
+  <div class="panel-body" style="display:flex; flex-direction:column; gap:10px;">
+    {% for b in open_ballots %}
+    <div class="open-ballot-card">
+      <div>
+        <div class="row-title">{{ b.title }}</div>
+        <div class="row-sub">{{ 'Personenwahl' if b.kind.value == 'personenwahl' else 'Ja/Nein/Enth.' }} &middot; {{ 'Geheim' if b.secret else 'Offen' }}</div>
+      </div>
+      <a href="/wahlgaenge/{{ b.id }}/abstimmen" class="btn btn-primary">Abstimmen</a>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}

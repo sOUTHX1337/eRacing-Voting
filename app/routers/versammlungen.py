@@ -4,6 +4,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -43,6 +44,15 @@ def index(request: Request, member: Optional[Member] = Depends(get_current_membe
     # Abgeschlossene Versammlungen wandern ins Archiv, damit die Übersicht nicht zuwaechst
     current_assemblies = [a for a in all_assemblies if a.status != AssemblyStatus.abgeschlossen]
 
+    # Anzahl offener Wahlgaenge je Versammlung, damit man in der Uebersicht sofort
+    # sieht, wo gerade Handlungsbedarf besteht - eine gruppierte Abfrage statt N+1.
+    open_ballot_counts = dict(
+        db.query(Ballot.assembly_id, func.count(Ballot.id))
+        .filter(Ballot.status == BallotStatus.offen)
+        .group_by(Ballot.assembly_id)
+        .all()
+    )
+
     return templates.TemplateResponse(
         "index.html",
         {
@@ -50,6 +60,7 @@ def index(request: Request, member: Optional[Member] = Depends(get_current_membe
             "member": member,
             "assemblies": current_assemblies,
             "all_assemblies": all_assemblies,
+            "open_ballot_counts": open_ballot_counts,
             "flash": None,
         },
     )
@@ -98,6 +109,10 @@ def create_assembly(
 
 def _dashboard_context(db: Session, assembly: Assembly, member: Member, flash: Optional[str] = None) -> dict:
     ballots = db.query(Ballot).filter(Ballot.assembly_id == assembly.id).order_by(Ballot.created_at).all()
+    # Offene Wahlgaenge nach oben, damit sie in der Tabelle nicht untergehen -
+    # sortiert() ist stabil, innerhalb der beiden Gruppen bleibt created_at erhalten.
+    ballots = sorted(ballots, key=lambda b: b.status != BallotStatus.offen)
+    open_ballots = [b for b in ballots if b.status == BallotStatus.offen]
     proxies = db.query(Proxy).filter(Proxy.assembly_id == assembly.id).order_by(Proxy.created_at).all()
     active_members = (
         db.query(Member)
@@ -130,6 +145,7 @@ def _dashboard_context(db: Session, assembly: Assembly, member: Member, flash: O
         "member": member,
         "assembly": assembly,
         "ballots": ballots,
+        "open_ballots": open_ballots,
         "proxies": proxies,
         "active_members": active_members,
         "quorum": quorum,
@@ -250,6 +266,7 @@ def live_fragment(
             "confirmed": templates.env.get_template("_live_confirmed.html").render(context),
             "ballot_rows": templates.env.get_template("_live_ballot_rows.html").render(context),
             "proxy_rows": templates.env.get_template("_live_proxy_rows.html").render(context),
+            "open_ballots": templates.env.get_template("_live_open_ballots.html").render(context),
         }
     )
 

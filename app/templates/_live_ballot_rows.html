@@ -1,5 +1,5 @@
 {% for b in ballots %}
-<tr>
+<tr{% if b.status.value == 'offen' %} class="row-open"{% endif %}>
   <td><div class="row-title">{{ b.title }}</div></td>
   <td>{{ 'Personenwahl' if b.kind.value == 'personenwahl' else 'Ja/Nein/Enth.' }}</td>
   <td>{{ 'Geheim' if b.secret else 'Offen' }}</td>
@@ -13,7 +13,7 @@
     {% if b.status.value == 'geschlossen' %}
       <a href="/wahlgaenge/{{ b.id }}/ergebnis" class="btn-sm">Ergebnis</a>
     {% elif b.status.value == 'offen' %}
-      <a href="/wahlgaenge/{{ b.id }}/abstimmen" class="btn-sm">Abstimmen</a>
+      <a href="/wahlgaenge/{{ b.id }}/abstimmen" class="btn-sm primary">Abstimmen</a>
       {% if member.is_wahlleitung %}<form class="inline" method="post" action="/wahlgaenge/{{ b.id }}/close"><button class="btn-sm red">Schließen</button></form>{% endif %}
     {% elif member.is_wahlleitung %}
       <form class="inline" method="post" action="/wahlgaenge/{{ b.id }}/open"><button class="btn-sm">Öffnen</button></form>

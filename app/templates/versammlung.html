@@ -8,6 +8,10 @@
 
   <div id="open-ballot-banner"></div>
 
+  <div id="live-open-ballots">
+    {% include "_live_open_ballots.html" %}
+  </div>
+
   <div class="panel-head" style="padding:0; margin-bottom:20px; border:none;">
     <h3 style="font-size:15px;">
       {% if assembly.status.value == 'laufend' %}<span class="status-pill alert">Läuft</span>
@@ -203,6 +207,7 @@
         if (d.error) return;
         var checkboxState = captureCheckboxState();
         swap('live-stats', d.stats);
+        swap('live-open-ballots', d.open_ballots);
         swap('live-attendance-body', d.attendance_rows);
         swap('live-confirmed', d.confirmed);
         swap('live-ballots-body', d.ballot_rows);

@@ -66,6 +66,10 @@
             {% if a.status.value == 'laufend' %}<span class="status-pill alert">Läuft</span>
             {% elif a.status.value == 'abgeschlossen' %}<span class="status-pill neutral">Abgeschlossen</span>
             {% else %}<span class="status-pill outline">Vorbereitung</span>{% endif %}
+            {% set open_count = open_ballot_counts.get(a.id, 0) %}
+            {% if open_count %}
+            <span class="status-pill alert" style="margin-left:6px;">{{ open_count }} {{ 'offener Wahlgang' if open_count == 1 else 'offene Wahlgänge' }}</span>
+            {% endif %}
           </td>
           <td><a href="/versammlungen/{{ a.id }}" class="btn-sm">Öffnen</a></td>
         </tr>
