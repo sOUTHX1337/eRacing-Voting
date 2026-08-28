@@ -258,7 +258,7 @@ def sync_members(
     sync_summary = None
     if result.ok:
         found_uids = {m["uid"] for m in result.members}
-        created = confirmed = demoted = 0
+        created = confirmed = removed = demoted = 0
 
         for m in result.members:
             existing = db.query(Member).filter(Member.ldap_uid == m["uid"]).one_or_none()
@@ -279,16 +279,27 @@ def sync_members(
                 existing.status = MemberStatus.aktiv
                 confirmed += 1
 
-        # Wer aktuell als aktiv gefuehrt wird, aber nicht mehr in der Gruppe ist,
-        # verliert das Stimmrecht (passiv) - der Datensatz bleibt wegen
-        # Protokollpflicht fuer vergangene Versammlungen erhalten.
+        # Wer die aktive Gruppe verlassen hat, wird vollstaendig entfernt statt nur
+        # auf passiv gesetzt - so bleiben ausgeschiedene Mitglieder nicht dauerhaft
+        # in der Liste stehen. Ausnahme: Datensaetze mit Historie (Anwesenheit,
+        # Vollmacht, Teilnahme, Stimme) wuerden dadurch aus vergangenen
+        # Versammlungsprotokollen verschwinden - die werden stattdessen weiterhin
+        # nur auf passiv gesetzt.
         for m in db.query(Member).filter(Member.status == MemberStatus.aktiv).all():
-            if m.ldap_uid != ADMIN_LDAP_UID and m.ldap_uid not in found_uids:
+            if m.ldap_uid == ADMIN_LDAP_UID or m.ldap_uid in found_uids:
+                continue
+            if _member_has_history(db, m.id):
                 m.status = MemberStatus.passiv
                 demoted += 1
+            else:
+                db.delete(m)
+                removed += 1
 
         db.commit()
-        sync_summary = f"{created} neu importiert, {confirmed} bestätigt, {demoted} auf passiv gesetzt."
+        sync_summary = (
+            f"{created} neu importiert, {confirmed} bestätigt, "
+            f"{removed} entfernt, {demoted} auf passiv gesetzt (mit Historie)."
+        )
 
     members = db.query(Member).order_by(Member.name).all()
     return templates.TemplateResponse(
